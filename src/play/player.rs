@@ -1,4 +1,4 @@
-use crate::play::metadata::AlbumInfo;
+use crate::db::metadata::AlbumInfo;
 use gpui::{Global, SharedString};
 use rand::seq::SliceRandom;
 use rodio::{Decoder, OutputStream, Sink};
@@ -10,17 +10,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 /// 循环播放模式
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum LoopMode {
-    /// 随机播放
     Random,
-    /// 单曲循环
     Single,
-    /// 列表循环
     List,
 }
 
 impl LoopMode {
+    ///点击切换到下一个循环模式
     pub fn next(&self) -> Self {
         match self {
             LoopMode::List => LoopMode::Single,
@@ -31,7 +29,7 @@ impl LoopMode {
 }
 
 /// 播放状态
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum PlayState {
     Play,
     Paused,
@@ -94,11 +92,6 @@ impl PlayList {
         self.items.get(index)
     }
 
-    // fn get_by_shuffle_index(&self, shuffle_idx: usize) -> Option<&AlbumInfo> {
-    //     self.shuffle_order
-    //         .get(shuffle_idx)
-    //         .and_then(|&real_idx| self.items.get(real_idx))
-    // }
 }
 
 pub struct Player {

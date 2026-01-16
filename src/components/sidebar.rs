@@ -8,15 +8,16 @@ const NAVIGATE_ITEM_HEIGHT: f32 = 50.0;
 pub struct Sidebar;
 
 pub enum SidebarMessage {
-    LibraryClicked,
-    FavoritesClicked,
-    HistoryClicked,
+    Library,
+    Favorite,
+    History,
+    Settings,
 }
 
 impl EventEmitter<SidebarMessage> for Sidebar {}
 
 impl Render for Sidebar {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .w(px(SIDEBAR_WIDTH))
             .h_full()
@@ -46,8 +47,8 @@ impl Render for Sidebar {
                     .rounded_lg()
                     .cursor_pointer()
                     .child(svg().path("library.svg").size_6().text_color(black()))
-                    .on_click(_cx.listener(|_this, _event, _window, cx| {
-                        cx.emit(SidebarMessage::LibraryClicked);
+                    .on_click(cx.listener(|_this, _event, _window, cx| {
+                        cx.emit(SidebarMessage::Library);
                     }))
                     .hover(|style| style.bg(rgb(0xE5E5E5)))
                     .active(|style| style.bg(rgb(0xF1F5F9)))
@@ -67,8 +68,8 @@ impl Render for Sidebar {
                     .rounded_lg()
                     .cursor_pointer()
                     .child(svg().path("heart.svg").size_6().text_color(black()))
-                    .on_click(_cx.listener(|_this, _event, _window, cx| {
-                        cx.emit(SidebarMessage::LibraryClicked);
+                    .on_click(cx.listener(|_this, _event, _window, cx| {
+                        cx.emit(SidebarMessage::Library);
                     }))
                     .hover(|style| style.bg(rgb(0xE5E5E5)))
                     .active(|style| style.bg(rgb(0xF1F5F9)))
@@ -88,12 +89,30 @@ impl Render for Sidebar {
                     .rounded_lg()
                     .cursor_pointer()
                     .child(svg().path("history.svg").size_6().text_color(black()))
-                    .on_click(_cx.listener(|_this, _event, _window, cx| {
-                        cx.emit(SidebarMessage::HistoryClicked);
+                    .on_click(cx.listener(|_this, _event, _window, cx| {
+                        cx.emit(SidebarMessage::History);
                     }))
                     .hover(|style| style.bg(rgb(0xE5E5E5)))
                     .active(|style| style.bg(rgb(0xF1F5F9)))
                     .child("历史"),
+            )
+            .child(
+                svg()
+                    .path("setting.svg")
+                    .flex()
+                    .size_6()
+                    .text_color(black())
+                    .mt_auto()
+                    .justify_start()
+                    .cursor_pointer()
+                    .ml_3()
+                    .mb_3()
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|_this, _evt, _window, cx| {
+                            cx.emit(SidebarMessage::Settings);
+                        }),
+                    ),
             )
     }
 }

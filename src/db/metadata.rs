@@ -1,8 +1,7 @@
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-
-use gpui::*;
+use gpui::SharedString;
 use lofty::prelude::{Accessor, TaggedFileExt};
 use lofty::{error::LoftyError, file::AudioFile, read_from_path};
 use uuid::Uuid;
@@ -15,10 +14,34 @@ pub struct AlbumInfo {
     album: SharedString,
     duration: u64,
     path: Arc<PathBuf>,
+    cover: Option<Arc<Vec<u8>>>,
 }
 
 impl AlbumInfo {
-    pub fn new(path: impl AsRef<Path>, id: Uuid) -> Result<Self, LoftyError> {
+    pub fn new(
+        id: Uuid,
+        title: SharedString,
+        artist: SharedString,
+        album: SharedString,
+        duration: u64,
+        path: Arc<PathBuf>,
+        cover: Option<Arc<Vec<u8>>>,
+    ) -> Self {
+        AlbumInfo {
+            id,
+            title,
+            artist,
+            album,
+            duration,
+            path,
+            cover,
+        }
+    }
+
+    /// todo uuid生成策略
+    pub fn new_from_file(path: impl AsRef<Path>) -> Result<Self, LoftyError> {
+        let uuid=Uuid::new_v4();
+
         let path = path.as_ref();
 
         // 读取 tags + properties（时长/比特率等）
@@ -41,12 +64,13 @@ impl AlbumInfo {
                 let album = tag.album().unwrap_or(Cow::Borrowed("未知专辑"));
 
                 Ok(AlbumInfo {
-                    id,
+                    id: uuid,
                     title: SharedString::new(title),
                     artist: SharedString::new(artist),
                     album: SharedString::new(album),
                     duration: properties.duration().as_secs(),
                     path: Arc::new(path.to_path_buf()),
+                    cover: None, // 从文件创建时不加载封面，由数据库加载
                 })
             }
             None => {
@@ -55,12 +79,13 @@ impl AlbumInfo {
                 let album = "Unknown Album";
                 let duration = properties.duration().as_secs();
                 Ok(AlbumInfo {
-                    id,
+                    id: uuid,
                     title: SharedString::new(title),
                     artist: SharedString::new(artist),
                     album: SharedString::new(album),
                     duration,
                     path: Arc::new(path.to_path_buf()),
+                    cover: None, // 从文件创建时不加载封面，由数据库加载
                 })
             }
         }
@@ -87,4 +112,7 @@ impl AlbumInfo {
         Arc::clone(&self.path)
     }
 
+    pub fn cover(&self) -> Option<Arc<Vec<u8>>> {
+        self.cover.as_ref().map(Arc::clone)
+    }
 }
