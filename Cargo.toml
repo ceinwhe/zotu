@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 crossbeam = "0.8.4"
 gpui = "0.2.2"
+image = "0.25.9"
 lofty = "0.22.4"
 rand = "0.9"
 rfd = "0.17.2"
@@ -15,3 +16,4 @@ rodio = { version = "0.21.1", features = [
 ] }
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 uuid = { version = "1.19.0", features = ["v4"] }
+walkdir = "2.5.0"

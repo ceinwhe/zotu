@@ -1,20 +1,24 @@
+use gpui::SharedString;
+use image::{ExtendedColorType, codecs::jpeg::JpegEncoder, imageops::FilterType, load_from_memory};
+use lofty::prelude::{Accessor, TaggedFileExt};
+use lofty::{file::AudioFile, picture::MimeType, read_from_path};
 use std::borrow::Cow;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use gpui::SharedString;
-use lofty::prelude::{Accessor, TaggedFileExt};
-use lofty::{error::LoftyError, file::AudioFile, read_from_path};
 use uuid::Uuid;
 
+/// 音乐专辑元信息,包含标题、艺术家、专辑名、时长、文件路径及封面等
 #[derive(Clone)]
 pub struct AlbumInfo {
-    pub id: Uuid,
+    id: Uuid,
     title: SharedString,
     artist: SharedString,
     album: SharedString,
     duration: u64,
     path: Arc<PathBuf>,
-    cover: Option<Arc<Vec<u8>>>,
+    cover_path: Option<SharedString>,
+    cover_64: Option<Arc<Vec<u8>>>,
 }
 
 impl AlbumInfo {
@@ -25,7 +29,8 @@ impl AlbumInfo {
         album: SharedString,
         duration: u64,
         path: Arc<PathBuf>,
-        cover: Option<Arc<Vec<u8>>>,
+        cover_path: Option<SharedString>,
+        cover_64: Option<Arc<Vec<u8>>>,
     ) -> Self {
         AlbumInfo {
             id,
@@ -34,61 +39,96 @@ impl AlbumInfo {
             album,
             duration,
             path,
-            cover,
+            cover_path,
+            cover_64,
         }
     }
 
-    /// todo uuid生成策略
-    pub fn new_from_file(path: impl AsRef<Path>) -> Result<Self, LoftyError> {
-        let uuid=Uuid::new_v4();
+    pub fn new_from_file(
+        source_path: impl AsRef<Path>,
+        cover_dir: impl AsRef<Path>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let id = Uuid::new_v4();
 
-        let path = path.as_ref();
-
-        // 读取 tags + properties（时长/比特率等）
+        let path = source_path.as_ref();
         let tagged_file = read_from_path(path)?;
-        let properties = tagged_file.properties();
-
-        let tag = tagged_file
-            .primary_tag()
-            .or_else(|| tagged_file.first_tag());
+        let props = tagged_file.properties();
 
         let title_from_filename = path
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or_default();
 
-        match tag {
-            Some(tag) => {
-                let title = tag.title().unwrap_or(Cow::Borrowed(title_from_filename));
-                let artist = tag.artist().unwrap_or(Cow::Borrowed("未知艺术家"));
-                let album = tag.album().unwrap_or(Cow::Borrowed("未知专辑"));
+        let tag = tagged_file
+            .primary_tag()
+            .or_else(|| tagged_file.first_tag());
 
-                Ok(AlbumInfo {
-                    id: uuid,
-                    title: SharedString::new(title),
-                    artist: SharedString::new(artist),
-                    album: SharedString::new(album),
-                    duration: properties.duration().as_secs(),
-                    path: Arc::new(path.to_path_buf()),
-                    cover: None, // 从文件创建时不加载封面，由数据库加载
-                })
-            }
-            None => {
-                let title = title_from_filename;
-                let artist = "Unknown Artist";
-                let album = "Unknown Album";
-                let duration = properties.duration().as_secs();
-                Ok(AlbumInfo {
-                    id: uuid,
-                    title: SharedString::new(title),
-                    artist: SharedString::new(artist),
-                    album: SharedString::new(album),
-                    duration,
-                    path: Arc::new(path.to_path_buf()),
-                    cover: None, // 从文件创建时不加载封面，由数据库加载
-                })
-            }
-        }
+        // 统一把 title/artist/album 都算出来（无 tag 时走默认值）
+        let (title, artist, album) = match tag {
+            Some(t) => (
+                t.title().unwrap_or(Cow::Borrowed(title_from_filename)),
+                t.artist().unwrap_or(Cow::Borrowed("未知艺术家")),
+                t.album().unwrap_or(Cow::Borrowed("未知专辑")),
+            ),
+            None => (
+                Cow::Borrowed(title_from_filename),
+                Cow::Borrowed("未知艺术家"),
+                Cow::Borrowed("未知专辑"),
+            ),
+        };
+
+        // cover 处理：最终变成 Option<(cover_path, cover_64)>
+        let cover_pack: Option<(SharedString, Arc<Vec<u8>>)> = tag
+            .and_then(|t| {
+                t.pictures().first()
+                    
+            })
+            .map(|cover| -> Result<_, Box<dyn std::error::Error>> {
+                let ext = cover
+                    .mime_type()
+                    .cloned()
+                    .unwrap_or(MimeType::Png)
+                    .ext()
+                    .unwrap_or("png")
+                    .to_string();
+
+                // 生成 64x64 jpeg bytes
+                let img = load_from_memory(cover.data())?;
+                let resized = img.resize_exact(64, 64, FilterType::Lanczos3).to_rgb8();
+                let mut cover_64 = Vec::new();
+                JpegEncoder::new_with_quality(&mut cover_64, 100).encode(
+                    &resized,
+                    64,
+                    64,
+                    ExtendedColorType::Rgb8,
+                )?;
+
+                // 落盘原图
+                let cover_path = cover_dir.as_ref().join(format!("{id}.{ext}"));
+                fs::write(&cover_path, cover.data())?;
+
+                Ok((
+                    SharedString::new(cover_path.to_string_lossy()),
+                    Arc::new(cover_64),
+                ))
+            })
+            .transpose()?; // Option<Result<T>> -> Result<Option<T>>
+
+        let (cover_path, cover_64) = match cover_pack {
+            Some((p, b)) => (Some(p), Some(b)),
+            None => (None, None),
+        };
+
+        Ok(AlbumInfo {
+            id,
+            title: SharedString::new(title),
+            artist: SharedString::new(artist),
+            album: SharedString::new(album),
+            duration: props.duration().as_secs(),
+            path: Arc::new(path.to_path_buf()),
+            cover_path,
+            cover_64,
+        })
     }
 
     pub fn title(&self) -> SharedString {
@@ -112,7 +152,15 @@ impl AlbumInfo {
         Arc::clone(&self.path)
     }
 
-    pub fn cover(&self) -> Option<Arc<Vec<u8>>> {
-        self.cover.as_ref().map(Arc::clone)
+    pub fn cover_path(&self) -> Option<SharedString> {
+        self.cover_path.clone()
+    }
+
+    pub fn cover_64(&self) -> Option<Arc<Vec<u8>>> {
+        self.cover_64.as_ref().map(Arc::clone)
+    }
+
+    pub fn id(&self) -> Uuid {
+        self.id
     }
 }

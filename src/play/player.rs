@@ -52,7 +52,7 @@ impl CurrentTrackInfo {
             artist: info.artist(),
             album: info.album(),
             duration: info.duration(),
-            id: info.id,
+            id: info.id(),
         }
     }
 }
@@ -69,7 +69,7 @@ impl PlayList {
         let index = items
             .iter()
             .enumerate()
-            .map(|(i, item)| (item.id, i))
+            .map(|(i, item)| (item.id(), i))
             .collect();
         let shuffle_order = (0..items.len()).collect();
         Self {
@@ -246,7 +246,7 @@ impl Player {
     pub fn play_track(&mut self, item: &AlbumInfo) {
         // 查找在播放列表中的索引
         if let Some(playlist) = &self.playlist {
-            if let Some(&idx) = playlist.index.get(&item.id) {
+            if let Some(&idx) = playlist.index.get(&item.id()) {
                 self.current_index = Some(idx);
                 // 更新随机播放索引
                 if self.loop_mode == LoopMode::Random {
