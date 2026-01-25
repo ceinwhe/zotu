@@ -11,7 +11,7 @@ use uuid::Uuid;
 /// 音乐专辑元信息,包含标题、艺术家、专辑名、时长、文件路径及封面等
 #[derive(Clone)]
 pub struct AlbumInfo {
-    id: Uuid,
+    id: Arc<Uuid>,
     title: SharedString,
     artist: SharedString,
     album: SharedString,
@@ -22,6 +22,7 @@ pub struct AlbumInfo {
 }
 
 impl AlbumInfo {
+    /// 创建一个新的 AlbumInfo 实例
     pub fn new(
         id: Uuid,
         title: SharedString,
@@ -33,7 +34,7 @@ impl AlbumInfo {
         cover_64: Option<Arc<Vec<u8>>>,
     ) -> Self {
         AlbumInfo {
-            id,
+            id: Arc::new(id),
             title,
             artist,
             album,
@@ -44,6 +45,7 @@ impl AlbumInfo {
         }
     }
 
+    /// 从音频文件中读取元信息并创建 AlbumInfo 实例
     pub fn new_from_file(
         source_path: impl AsRef<Path>,
         cover_dir: impl AsRef<Path>,
@@ -120,7 +122,7 @@ impl AlbumInfo {
         };
 
         Ok(AlbumInfo {
-            id,
+            id: Arc::new(id),
             title: SharedString::new(title),
             artist: SharedString::new(artist),
             album: SharedString::new(album),
@@ -130,6 +132,12 @@ impl AlbumInfo {
             cover_64,
         })
     }
+
+    // ///通过uuid获取整个AlbumInfo
+    // pub fn get_from_uuid(id: Arc<Uuid>) -> Self {
+        
+    // }
+
 
     pub fn title(&self) -> SharedString {
         SharedString::clone(&self.title)
@@ -160,7 +168,7 @@ impl AlbumInfo {
         self.cover_64.as_ref().map(Arc::clone)
     }
 
-    pub fn id(&self) -> Uuid {
-        self.id
+    pub fn id(&self) -> Arc<Uuid> {
+        Arc::clone(&self.id)
     }
 }

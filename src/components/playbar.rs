@@ -1,5 +1,7 @@
 use crate::play::player::{LoopMode, PlayState, Player};
+use gpui::prelude::FluentBuilder;
 use gpui::*;
+use std::sync::Arc;
 
 pub struct PlayBar {
     // 用于定时刷新 UI
@@ -48,8 +50,9 @@ impl Render for PlayBar {
         let player = cx.global::<Player>();
 
         // 获取当前播放信息
-        let (title, artist) = match player.current_track() {
-            Some(track) => (track.title.to_string(), track.artist.to_string()),
+        let current_track = player.current_track();
+        let (title, artist) = match &current_track {
+            Some(track) => (track.title().to_string(), track.artist().to_string()),
             None => ("未播放".to_string(), String::new()),
         };
 
@@ -63,6 +66,8 @@ impl Render for PlayBar {
             LoopMode::Single => "single.svg",
             LoopMode::Random => "random.svg",
         };
+
+        let cover_64 = current_track.as_ref().and_then(|t| t.cover_64());
 
         div()
             .w_full()
@@ -80,23 +85,55 @@ impl Render for PlayBar {
             .child(
                 div()
                     .flex()
-                    .flex_col()
-                    .justify_center()
-                    .w(Pixels::from(200.0))
-                    .overflow_hidden()
+                    .flex_row()
+                    .gap_1()
                     .child(
                         div()
-                            .text_sm()
-                            .font_weight(FontWeight::MEDIUM)
-                            .truncate()
-                            .child(title),
+                            .flex_shrink_0()
+                            .size(Pixels::from(48.0))
+                            .flex()
+                            .content_center()
+                            .justify_center()
+                            .when_some(cover_64, |this, cover| {
+                                this.child(
+                                    img(Arc::new(Image::from_bytes(
+                                        ImageFormat::Jpeg,
+                                        cover.to_vec(),
+                                    )))
+                                    .size_full(),
+                                )
+                            })
+                            .when(
+                                current_track.is_none()
+                                    || current_track.as_ref().and_then(|t| t.cover_64()).is_none(),
+                                |this| {
+                                    this.child(
+                                        svg().path("album.svg").size_full().text_color(black()),
+                                    )
+                                },
+                            ),
                     )
                     .child(
                         div()
-                            .text_xs()
-                            .text_color(rgb(0x666666))
-                            .truncate()
-                            .child(artist),
+                            .flex()
+                            .flex_col()
+                            .justify_center()
+                            .w(Pixels::from(200.0))
+                            .overflow_hidden()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .truncate()
+                                    .child(title),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(0x666666))
+                                    .truncate()
+                                    .child(artist),
+                            ),
                     ),
             )
             // 播放控制按钮区域

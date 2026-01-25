@@ -1,5 +1,5 @@
 use crate::db::metadata::AlbumInfo;
-use gpui::{Global, SharedString};
+use gpui::Global;
 use rand::seq::SliceRandom;
 use rodio::{Decoder, OutputStream, Sink};
 use uuid::Uuid;
@@ -35,31 +35,9 @@ pub enum PlayState {
     Paused,
 }
 
-/// 当前播放信息，用于 UI 显示
-#[derive(Clone)]
-pub struct CurrentTrackInfo {
-    pub title: SharedString,
-    pub artist: SharedString,
-    pub album: SharedString,
-    pub duration: u64,
-    pub id: Uuid,
-}
-
-impl CurrentTrackInfo {
-    pub fn from_album_info(info: &AlbumInfo) -> Self {
-        Self {
-            title: info.title(),
-            artist: info.artist(),
-            album: info.album(),
-            duration: info.duration(),
-            id: info.id(),
-        }
-    }
-}
-
 struct PlayList {
     items: Arc<Vec<AlbumInfo>>,
-    index: HashMap<Uuid, usize>,
+    index: HashMap<Arc<Uuid>, usize>,
     /// 随机播放时的播放顺序
     shuffle_order: Vec<usize>,
 }
@@ -91,7 +69,6 @@ impl PlayList {
     fn get(&self, index: usize) -> Option<&AlbumInfo> {
         self.items.get(index)
     }
-
 }
 
 pub struct Player {
@@ -100,7 +77,7 @@ pub struct Player {
     playlist: Option<PlayList>,
     current_index: Option<usize>,
     current_shuffle_index: Option<usize>,
-    current_track: Option<CurrentTrackInfo>,
+    current_track: Option<AlbumInfo>,
     loop_mode: LoopMode,
     play_state: PlayState,
     /// 播放历史记录 (存储播放过的歌曲索引)
@@ -183,7 +160,7 @@ impl Player {
         self.play_state
     }
 
-    pub fn current_track(&self) -> Option<&CurrentTrackInfo> {
+    pub fn current_track(&self) -> Option<&AlbumInfo> {
         self.current_track.as_ref()
     }
 
@@ -403,9 +380,9 @@ impl Player {
                     self.current_shuffle_index =
                         playlist.shuffle_order.iter().position(|&i| i == idx);
                 }
-                let item_clone = CurrentTrackInfo::from_album_info(item);
+
                 let path = item.path();
-                self.play_source_by_path(path, item_clone);
+                self.play_source_by_path(path, item.clone());
             }
         }
     }
@@ -416,15 +393,9 @@ impl Player {
             LoopMode::Single => {
                 // 单曲循环：重新播放当前歌曲
                 if let Some(track) = &self.current_track {
-                    if let Some(playlist) = &self.playlist {
-                        if let Some(&idx) = playlist.index.get(&track.id) {
-                            if let Some(item) = playlist.get(idx) {
-                                let path = item.path();
-                                if let Ok(source) = decode(path) {
-                                    self.sink.append(source);
-                                }
-                            }
-                        }
+                    let path = track.path();
+                    if let Ok(source) = decode(path) {
+                        self.sink.append(source);
                     }
                 }
             }
@@ -473,11 +444,10 @@ impl Player {
 
     fn play_source(&mut self, item: &AlbumInfo) {
         let path = item.path();
-        let track_info = CurrentTrackInfo::from_album_info(item);
-        self.play_source_by_path(path, track_info);
+        self.play_source_by_path(path, item.clone());
     }
 
-    fn play_source_by_path(&mut self, path: Arc<PathBuf>, track_info: CurrentTrackInfo) {
+    fn play_source_by_path(&mut self, path: Arc<PathBuf>, track_info: AlbumInfo) {
         // 停止当前播放
         self.sink.stop();
         // 重新创建 sink

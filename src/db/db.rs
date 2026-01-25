@@ -4,6 +4,8 @@ use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 use walkdir::WalkDir;
 
+use crate::db::table;
+
 use super::metadata::AlbumInfo;
 
 pub struct DB {
@@ -25,6 +27,33 @@ impl DB {
         Ok(DB { conn })
     }
 
+    /// 从数据库行映射到 AlbumInfo 的通用方法
+    fn map_row_to_album(row: &rusqlite::Row) -> rusqlite::Result<AlbumInfo> {
+        // 解析 UUID BLOB (16 bytes)
+        let uuid_bytes: Vec<u8> = row.get(0)?;
+        let id = Uuid::from_slice(&uuid_bytes).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Blob, Box::new(e))
+        })?;
+
+        // 处理可能为 NULL 的字段
+        let artist: Option<String> = row.get(2)?;
+        let album: Option<String> = row.get(3)?;
+        let cover_path: Option<String> = row.get(6)?;
+        let cover_64: Option<Vec<u8>> = row.get(7)?;
+
+        let title = SharedString::new(row.get::<_, String>(1)?);
+        let artist = SharedString::new(artist.unwrap_or_else(|| "未知艺术家".to_string()));
+        let album = SharedString::new(album.unwrap_or_else(|| "未知专辑".to_string()));
+        let duration = row.get::<_, i64>(4)? as u64;
+        let path = Arc::new(PathBuf::from(row.get::<_, String>(5)?));
+        let cover_path = cover_path.map(SharedString::new);
+        let cover_64 = cover_64.map(Arc::new);
+
+        Ok(AlbumInfo::new(
+            id, title, artist, album, duration, path, cover_path, cover_64,
+        ))
+    }
+
     /// 高性能加载所有专辑信息
     /// 使用预编译语句和批量处理优化性能
     pub fn load_all_albums(&self) -> Option<Vec<AlbumInfo>> {
@@ -33,37 +62,7 @@ impl DB {
             .prepare_cached("SELECT uuid, title, artist, album, duration, path, cover_path, cover_64 FROM library")
             .ok()?;
 
-        let album_iter = stmt
-            .query_map([], |row| {
-                // 解析 UUID BLOB (16 bytes)
-                let uuid_bytes: Vec<u8> = row.get(0)?;
-                let id = Uuid::from_slice(&uuid_bytes).map_err(|erroe| {
-                    rusqlite::Error::FromSqlConversionFailure(
-                        0,
-                        rusqlite::types::Type::Blob,
-                        Box::new(erroe),
-                    )
-                })?;
-
-                // 处理可能为 NULL 的字段
-                let artist: Option<String> = row.get(2)?;
-                let album: Option<String> = row.get(3)?;
-                let cover_path: Option<String> = row.get(6)?;
-                let cover_64: Option<Vec<u8>> = row.get(7)?;
-
-                let title = SharedString::new(row.get::<_, String>(1)?);
-                let artist = SharedString::new(artist.unwrap_or_else(|| "未知艺术家".to_string()));
-                let album = SharedString::new(album.unwrap_or_else(|| "未知专辑".to_string()));
-                let duration = row.get::<_, i64>(4)? as u64;
-                let path = Arc::new(PathBuf::from(row.get::<_, String>(5)?));
-                let cover_path = cover_path.map(SharedString::new);
-                let cover_64 = cover_64.map(Arc::new);
-
-                Ok(AlbumInfo::new(
-                    id, title, artist, album, duration, path, cover_path, cover_64,
-                ))
-            })
-            .ok()?;
+        let album_iter = stmt.query_map([], Self::map_row_to_album).ok()?;
 
         // 预分配容量以减少重新分配
         let mut albums = Vec::with_capacity(1000);
@@ -79,6 +78,33 @@ impl DB {
         }
     }
 
+    pub fn get_all_uuids(&self, table: table::Table) -> Option<Vec<Uuid>> {
+        let mut stmt = self
+            .conn
+            .prepare_cached(&format!("SELECT uuid FROM {}", table.as_str()))
+            .ok()?;
+
+        let uuid_iter = stmt
+            .query_map([], |row| {
+                let uuid_bytes: Vec<u8> = row.get(0)?;
+                let id = Uuid::from_slice(&uuid_bytes).map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Blob,
+                        Box::new(e),
+                    )
+                })?;
+                Ok(id)
+            })
+            .ok()?;
+
+        let mut uuids = Vec::new();
+        for uuid in uuid_iter {
+            uuids.push(uuid.ok()?);
+        }
+        if uuids.is_empty() { None } else { Some(uuids) }
+    }
+
     /// 通过 UUID 查询单个专辑
     pub fn load_album_by_uuid(&self, uuid: &Uuid) -> rusqlite::Result<Option<AlbumInfo>> {
         let mut stmt = self.conn.prepare_cached(
@@ -88,39 +114,17 @@ impl DB {
         let mut rows = stmt.query(params![uuid.as_bytes().as_slice()])?;
 
         if let Some(row) = rows.next()? {
-            let uuid_bytes: Vec<u8> = row.get(0)?;
-            let id = Uuid::from_slice(&uuid_bytes).map_err(|e| {
-                rusqlite::Error::FromSqlConversionFailure(
-                    0,
-                    rusqlite::types::Type::Blob,
-                    Box::new(e),
-                )
-            })?;
-
-            let artist: Option<String> = row.get(2)?;
-            let album: Option<String> = row.get(3)?;
-            let cover_path: Option<String> = row.get(6)?;
-            let cover_64: Option<Vec<u8>> = row.get(7)?;
-
-            let title = SharedString::new(row.get::<_, String>(1)?);
-            let artist = SharedString::new(artist.unwrap_or_else(|| "未知艺术家".to_string()));
-            let album = SharedString::new(album.unwrap_or_else(|| "未知专辑".to_string()));
-            let duration = row.get::<_, i64>(4)? as u64;
-            let path = Arc::new(PathBuf::from(row.get::<_, String>(5)?));
-            let cover_path = cover_path.map(SharedString::new);
-            let cover_64 = cover_64.map(Arc::new);
-            Ok(Some(AlbumInfo::new(
-                id, title, artist, album, duration, path, cover_path, cover_64,
-            )))
+            Ok(Some(Self::map_row_to_album(row)?))
         } else {
             Ok(None)
         }
     }
 
-    pub fn add_to_table(&self, table: &str, id: Uuid) -> rusqlite::Result<()> {
+    /// 将 UUID 添加到指定表中
+    pub fn add_to_table(&self, table: table::Table, id: &Uuid) -> rusqlite::Result<()> {
         let mut stmt = self
             .conn
-            .prepare_cached(&format!("INSERT INTO {} (uuid) VALUES (?)", table))?;
+            .prepare_cached(&format!("INSERT INTO {} (uuid) VALUES (?)", table.as_str()))?;
         stmt.execute(params![id.as_bytes().as_slice()])?;
         Ok(())
     }
@@ -135,33 +139,7 @@ impl DB {
             "SELECT uuid, title, artist, album, duration, path, cover_path, cover_64 FROM library LIMIT ? OFFSET ?"
         )?;
 
-        let album_iter = stmt.query_map(params![limit, offset], |row| {
-            let uuid_bytes: Vec<u8> = row.get(0)?;
-            let id = Uuid::from_slice(&uuid_bytes).map_err(|e| {
-                rusqlite::Error::FromSqlConversionFailure(
-                    0,
-                    rusqlite::types::Type::Blob,
-                    Box::new(e),
-                )
-            })?;
-
-            let artist: Option<String> = row.get(2)?;
-            let album: Option<String> = row.get(3)?;
-            let cover_path: Option<String> = row.get(6)?;
-            let cover_64: Option<Vec<u8>> = row.get(7)?;
-
-            let title = SharedString::new(row.get::<_, String>(1)?);
-            let artist = SharedString::new(artist.unwrap_or_else(|| "未知艺术家".to_string()));
-            let album = SharedString::new(album.unwrap_or_else(|| "未知专辑".to_string()));
-            let duration = row.get::<_, i64>(4)? as u64;
-            let path = Arc::new(PathBuf::from(row.get::<_, String>(5)?));
-            let cover_path = cover_path.map(SharedString::new);
-            let cover_64 = cover_64.map(Arc::new);
-
-            Ok(AlbumInfo::new(
-                id, title, artist, album, duration, path, cover_path, cover_64,
-            ))
-        })?;
+        let album_iter = stmt.query_map(params![limit, offset], Self::map_row_to_album)?;
 
         let mut albums = Vec::with_capacity(limit as usize);
         for album in album_iter {
@@ -176,6 +154,7 @@ impl DB {
             .query_row("SELECT COUNT(*) FROM library", [], |row| row.get(0))
     }
 
+    /// 批量添加音频文件的元数据到库中
     pub fn add_metadata_to_library(
         &self,
         folder_path: &str,
