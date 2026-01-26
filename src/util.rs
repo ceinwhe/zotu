@@ -1,7 +1,6 @@
-use std::path::PathBuf;
-use std::io::Error;
+use std::{path::PathBuf,io::Error};
 
-
+/// 列出指定路径下的所有文件
 pub fn list_file(path: &str) -> Result<Vec<PathBuf>,Error> {
     let mut files = Vec::new();
     for entry in std::fs::read_dir(path)? {

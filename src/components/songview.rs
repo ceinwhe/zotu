@@ -1,13 +1,12 @@
-use gpui::DefiniteLength;
-use gpui::prelude::FluentBuilder;
-use gpui::*;
+use gpui::{prelude::FluentBuilder, *};
 use rfd::AsyncFileDialog;
 use std::sync::Arc;
 
-use crate::db::library_state::LibraryState;
-use crate::db::{db::DB, metadata::AlbumInfo, table::Table};
-use crate::play::player::Player;
-use crate::util::format_duration;
+use crate::{
+    db::{db::DB, library_state::LibraryState, metadata::AlbumInfo, table::Table},
+    play::player::Player,
+    util::format_duration,
+};
 
 /// 当前显示的视图类型
 #[derive(Clone, Copy, PartialEq, Default)]
@@ -79,24 +78,23 @@ impl AlbumList {
 impl Render for AlbumList {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let items = self.get_current_items(cx);
-
-        match items {
-            None => {
-                // 空列表视图
-                div()
-                    .id("song-list")
-                    .size_full()
+        div()
+            .id("album-list")
+            .when_none(&items, |this| {
+                this.size_full()
                     .flex()
-                    .content_center()
+                    .items_center()
                     .justify_center()
                     .child(
                         div()
                             .id("no-songs-message")
-                            .h(Pixels::from(20.0))
-                            .w(Pixels::from(60.0))
-                            .text_center()
+                            .h(Pixels::from(40.0))
+                            .w(Pixels::from(80.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
                             .child("添加歌曲")
-                            .hover(|style| style.bg(rgb(0xEEEEEE)))
+                            .bg(rgb(0xAED6F1))
                             .rounded_lg()
                             .cursor_pointer()
                             .on_click(cx.listener(|this, _event, _window, cx| {
@@ -126,12 +124,9 @@ impl Render for AlbumList {
                                 this._pick_folder_task = Some(Arc::new(task));
                             })),
                     )
-            }
-            Some(items) => {
-                // 歌曲列表视图
-                div()
-                    .id("song-list")
-                    .size_full()
+            })
+            .when_some(items, |this, items| {
+                this.size_full()
                     .flex()
                     .flex_col()
                     .overflow_y_scroll()
@@ -210,6 +205,8 @@ impl Render for AlbumList {
                                     .text_left()
                                     .truncate()
                                     .text_ellipsis()
+                                    .text_sm()
+                                    .font_weight(FontWeight::LIGHT)
                                     .child(item.album()),
                             )
                             // 时长
@@ -219,6 +216,8 @@ impl Render for AlbumList {
                                     .flex()
                                     .items_center()
                                     .justify_end()
+                                    .text_sm()
+                                    .font_weight(FontWeight::LIGHT)
                                     .child(format!("{}", format_duration(item.duration()))),
                             )
                             .on_click(cx.listener(move |this, _event, _window, cx| {
@@ -227,9 +226,7 @@ impl Render for AlbumList {
                                     state.add_to_history(&item_id_l, cx);
                                 });
                                 // 同时写入数据库
-                                let _ = cx
-                                    .global::<DB>()
-                                    .add_to_table(Table::History, &item_id_l);
+                                let _ = cx.global::<DB>().add_to_table(Table::History, &item_id_l);
 
                                 cx.update_global::<Player, _>(|player, _cx| {
                                     // 播放点击的歌曲
@@ -238,20 +235,17 @@ impl Render for AlbumList {
                             }))
                             .on_mouse_down(
                                 MouseButton::Right,
-                                cx.listener(move|this, _evt, _window, cx| {
+                                cx.listener(move |this, _evt, _window, cx| {
                                     // 通过 LibraryState 添加到收藏
                                     this.library_state.update(cx, |state, cx| {
                                         state.add_to_favorites(&item_id_r, cx);
                                     });
                                     // 同时写入数据库
-                                    let _ = cx.global::<DB>().add_to_table(
-                                        Table::Favorite,
-                                        &item_id_r,
-                                    );
+                                    let _ =
+                                        cx.global::<DB>().add_to_table(Table::Favorite, &item_id_r);
                                 }),
                             )
                     }))
-            }
-        }
+            })
     }
 }

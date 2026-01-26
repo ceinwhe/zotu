@@ -1,28 +1,25 @@
-use gpui::prelude::*;
-use gpui::*;
+use gpui::{prelude::FluentBuilder, *};
 
-use crate::components::playbar::PlayBar;
-use crate::components::setting::Setting;
-use crate::components::sidebar::{Sidebar, SidebarMessage};
-use crate::components::songview::{AlbumList, ViewType};
-use crate::components::titlebar::TitleBar;
-use crate::db::library_state::LibraryState;
-use crate::db::{db::DB, table::Table};
-use crate::play::player::Player;
-
-enum ViewShow {
-    SongView,
-    Setting,
-}
+use crate::{
+    components::{
+        playbar::PlayBar,
+        setting::Setting,
+        sidebar::{SideBar, SidebarItem},
+        songview::{AlbumList, ViewType},
+        titlebar::TitleBar,
+    },
+    db::{db::DB, library_state::LibraryState, table::Table},
+    play::player::Player,
+};
 
 // 主应用结构
 pub struct Zotu {
-    view_show: ViewShow,
+    view_type: SidebarItem,
     song_view: Entity<AlbumList>,
     setting: Entity<Setting>,
     play_bar: Entity<PlayBar>,
     title_bar: Entity<TitleBar>,
-    sidebar: Entity<Sidebar>,
+    sidebar: Entity<SideBar>,
 }
 
 impl Zotu {
@@ -41,17 +38,17 @@ impl Zotu {
 
         let play_bar = cx.new(|cx| PlayBar::new(cx));
         let title_bar = cx.new(|_| TitleBar);
-        let sidebar = cx.new(|_| Sidebar);
+        let sidebar = cx.new(|_| SideBar::new());
         let setting = cx.new(|_| Setting);
 
         // 订阅侧边栏消息 - 通过 song_view 来访问 library_state
         cx.subscribe(&sidebar, |this, _that, evt, cx| match evt {
-            SidebarMessage::Settings => {
-                this.view_show = ViewShow::Setting;
+            SidebarItem::Settings => {
+                this.view_type = SidebarItem::Settings;
                 cx.notify();
             }
-            SidebarMessage::Library => {
-                this.view_show = ViewShow::SongView;
+            SidebarItem::Library => {
+                this.view_type = SidebarItem::Library;
                 let list = this
                     .song_view
                     .update(cx, |view, cx| view.set_view_type(ViewType::Library, cx));
@@ -60,8 +57,8 @@ impl Zotu {
                 }
                 cx.notify();
             }
-            SidebarMessage::Favorite => {
-                this.view_show = ViewShow::SongView;
+            SidebarItem::Favorite => {
+                this.view_type = SidebarItem::Favorite;
                 let list = this
                     .song_view
                     .update(cx, |view, cx| view.set_view_type(ViewType::Favorite, cx));
@@ -70,8 +67,8 @@ impl Zotu {
                 }
                 cx.notify();
             }
-            SidebarMessage::History => {
-                this.view_show = ViewShow::SongView;
+            SidebarItem::History => {
+                this.view_type = SidebarItem::History;
                 let list = this
                     .song_view
                     .update(cx, |view, cx| view.set_view_type(ViewType::History, cx));
@@ -80,11 +77,14 @@ impl Zotu {
                 }
                 cx.notify();
             }
+            SidebarItem::Custom(_) => {
+                // TODO: 处理自定义歌单
+            }
         })
         .detach();
 
         Self {
-            view_show: ViewShow::SongView,
+            view_type: SidebarItem::Library,
             song_view,
             setting,
             play_bar,
@@ -110,9 +110,12 @@ impl Render for Zotu {
                     .flex()
                     .flex_col()
                     .child(self.title_bar.clone())
-                    .map(|parent| match self.view_show {
-                        ViewShow::Setting => parent.child(self.setting.clone()),
-                        ViewShow::SongView => parent
+                    .map(|parent| match self.view_type {
+                        SidebarItem::Settings => parent.child(self.setting.clone()),
+                        SidebarItem::Library
+                        | SidebarItem::Favorite
+                        | SidebarItem::History
+                        | SidebarItem::Custom(_) => parent
                             .child(self.song_view.clone())
                             .child(self.play_bar.clone()),
                     }),

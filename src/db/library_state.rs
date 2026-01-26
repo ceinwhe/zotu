@@ -1,6 +1,8 @@
 use gpui::*;
-use std::collections::{HashSet, HashMap};
-use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use uuid::Uuid;
 
 use crate::db::metadata::AlbumInfo;

@@ -1,11 +1,10 @@
 use gpui::{Global, SharedString};
 use rusqlite::{Connection, params};
-use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 use walkdir::WalkDir;
+use std::{path::PathBuf, sync::Arc};
 
 use crate::db::table;
-
 use super::metadata::AlbumInfo;
 
 pub struct DB {

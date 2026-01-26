@@ -1,7 +1,6 @@
-use gpui::prelude::*;
 use gpui::*;
 
-pub const TITLEBAR_HEIGHT: f32 = 50.0;
+pub const TITLEBAR_HEIGHT: f32 = 70.0;
 
 pub struct TitleBar;
 
@@ -12,13 +11,13 @@ impl Render for TitleBar {
             .h(px(TITLEBAR_HEIGHT))
             .flex()
             .flex_row()
-            .justify_end()
+            .justify_start()
             .bg(rgb(0xFAFAFA))
             //拖拽区域
             .child(
                 div()
                     .h_full()
-                    .flex_grow()
+                    .w_full()
                     .window_control_area(WindowControlArea::Drag)
                     .on_mouse_down(
                         MouseButton::Left,
@@ -31,10 +30,10 @@ impl Render for TitleBar {
             .child(
                 div()
                     .h_full()
+                    .w_auto()
+                    .gap_4()
                     .flex()
                     .flex_row()
-                    .items_center()
-                    .gap_4()
                     .child(
                         svg()
                             .path("minus.svg")

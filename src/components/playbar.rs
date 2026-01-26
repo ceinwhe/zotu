@@ -1,6 +1,5 @@
 use crate::play::player::{LoopMode, PlayState, Player};
-use gpui::prelude::FluentBuilder;
-use gpui::*;
+use gpui::{prelude::FluentBuilder,*};
 use std::sync::Arc;
 
 pub struct PlayBar {
@@ -91,6 +90,7 @@ impl Render for PlayBar {
                         div()
                             .flex_shrink_0()
                             .size(Pixels::from(48.0))
+                            .mr_2()
                             .flex()
                             .content_center()
                             .justify_center()

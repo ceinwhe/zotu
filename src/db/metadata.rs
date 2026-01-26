@@ -1,15 +1,22 @@
 use gpui::SharedString;
+use serde::{Deserialize, Serialize};
 use image::{ExtendedColorType, codecs::jpeg::JpegEncoder, imageops::FilterType, load_from_memory};
-use lofty::prelude::{Accessor, TaggedFileExt};
-use lofty::{file::AudioFile, picture::MimeType, read_from_path};
-use std::borrow::Cow;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use lofty::{
+    file::AudioFile,
+    picture::MimeType,
+    prelude::{Accessor, TaggedFileExt},
+    read_from_path,
+};
 use uuid::Uuid;
 
+use std::{
+    borrow::Cow,
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 /// 音乐专辑元信息,包含标题、艺术家、专辑名、时长、文件路径及封面等
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct AlbumInfo {
     id: Arc<Uuid>,
     title: SharedString,
@@ -81,10 +88,7 @@ impl AlbumInfo {
 
         // cover 处理：最终变成 Option<(cover_path, cover_64)>
         let cover_pack: Option<(SharedString, Arc<Vec<u8>>)> = tag
-            .and_then(|t| {
-                t.pictures().first()
-                    
-            })
+            .and_then(|t| t.pictures().first())
             .map(|cover| -> Result<_, Box<dyn std::error::Error>> {
                 let ext = cover
                     .mime_type()
@@ -132,12 +136,6 @@ impl AlbumInfo {
             cover_64,
         })
     }
-
-    // ///通过uuid获取整个AlbumInfo
-    // pub fn get_from_uuid(id: Arc<Uuid>) -> Self {
-        
-    // }
-
 
     pub fn title(&self) -> SharedString {
         SharedString::clone(&self.title)

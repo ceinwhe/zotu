@@ -4,3 +4,4 @@ pub mod components;
 pub mod db;
 pub mod play;
 pub mod util;
+pub mod config;

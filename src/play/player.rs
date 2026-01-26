@@ -1,16 +1,14 @@
-use crate::db::metadata::AlbumInfo;
 use gpui::Global;
+use serde::{Deserialize, Serialize};
 use rand::seq::SliceRandom;
 use rodio::{Decoder, OutputStream, Sink};
 use uuid::Uuid;
 
-use std::collections::HashMap;
-use std::error::Error;
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::{collections::HashMap,error::Error,path::PathBuf,sync::Arc};
 
+use crate::db::metadata::AlbumInfo;
 /// 循环播放模式
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
 pub enum LoopMode {
     Random,
     Single,

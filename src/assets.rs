@@ -1,7 +1,5 @@
 use gpui::{AssetSource, SharedString};
-use std::borrow::Cow;
-use std::fs;
-use std::path::PathBuf;
+use std::{borrow::Cow, fs, path::PathBuf};
 
 pub struct Assets {
     base: PathBuf,
