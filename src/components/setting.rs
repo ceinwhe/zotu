@@ -1,5 +1,8 @@
 use gpui::*;
 use crate::config::Config;
+
+const SETTING_ITEM_HEIGHT: f32 = 50.0;
+
 pub struct Setting;
 
 impl Render for Setting {
@@ -11,12 +14,15 @@ impl Render for Setting {
                 div()
                     .flex()
                     .justify_start()
-                    .text_xl()
+                    .mb_4()
+                    .text_2xl()
                     .font_weight(FontWeight::SEMIBOLD)
                     .child("设置"),
             )
             .child(
                 div()
+                    .h(Pixels::from(SETTING_ITEM_HEIGHT))
+                    .mr_5() 
                     .flex()
                     .flex_row()
                     .gap_4()

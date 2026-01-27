@@ -1,10 +1,10 @@
 use gpui::Global;
-use serde::{Deserialize, Serialize};
 use rand::seq::SliceRandom;
 use rodio::{Decoder, OutputStream, Sink};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use std::{collections::HashMap,error::Error,path::PathBuf,sync::Arc};
+use std::{collections::HashMap, error::Error, path::PathBuf, sync::Arc};
 
 use crate::db::metadata::AlbumInfo;
 /// 循环播放模式
@@ -35,12 +35,13 @@ pub enum PlayState {
 
 struct PlayList {
     items: Arc<Vec<AlbumInfo>>,
-    index: HashMap<Arc<Uuid>, usize>,
+    index: HashMap<Uuid, usize>,
     /// 随机播放时的播放顺序
     shuffle_order: Vec<usize>,
 }
 
 impl PlayList {
+    ///创建播放列表,建立索引
     fn new(items: Arc<Vec<AlbumInfo>>) -> Self {
         let index = items
             .iter()
@@ -70,7 +71,7 @@ impl PlayList {
 }
 
 pub struct Player {
-    _stream: OutputStream,
+    stream: OutputStream,
     sink: Sink,
     playlist: Option<PlayList>,
     current_index: Option<usize>,
@@ -94,7 +95,7 @@ impl Player {
         let sink = Sink::connect_new(&stream.mixer());
 
         Self {
-            _stream: stream,
+            stream,
             sink,
             playlist: None,
             current_index: None,
@@ -109,14 +110,14 @@ impl Player {
 
     // ========== 播放控制 ==========
 
-    pub fn play(&mut self) {
+    /// 强制开始播放
+    fn play(&mut self) {
+        self.play_state = PlayState::Play;
         self.sink.play();
-        if self.current_track.is_some() {
-            self.play_state = PlayState::Play;
-        }
     }
 
-    pub fn pause(&mut self) {
+    ///强制暂停播放
+    fn pause(&mut self) {
         self.sink.pause();
         self.play_state = PlayState::Paused;
     }
@@ -177,6 +178,8 @@ impl Player {
 
     pub fn set_playlist(&mut self, items: Arc<Vec<AlbumInfo>>) {
         let mut playlist = PlayList::new(items);
+
+        //????????
         if self.loop_mode == LoopMode::Random {
             playlist.shuffle();
         }
@@ -449,7 +452,7 @@ impl Player {
         // 停止当前播放
         self.sink.stop();
         // 重新创建 sink
-        self.sink = Sink::connect_new(&self._stream.mixer());
+        self.sink = Sink::connect_new(&self.stream.mixer());
 
         if let Ok(source) = decode(path) {
             self.sink.append(source);

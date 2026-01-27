@@ -3,7 +3,7 @@ use rfd::AsyncFileDialog;
 use std::sync::Arc;
 
 use crate::{
-    db::{db::DB, library_state::LibraryState, metadata::AlbumInfo, table::Table},
+    db::{db::DB, dbstate::LibraryState, metadata::AlbumInfo, table::Table},
     play::player::Player,
     util::format_duration,
 };
@@ -23,7 +23,6 @@ pub struct AlbumList {
     view_type: ViewType,
     /// LibraryState 引用，作为唯一数据源
     library_state: Entity<LibraryState>,
-    _pick_folder_task: Option<Arc<Task<()>>>,
 }
 
 impl AlbumList {
@@ -31,7 +30,6 @@ impl AlbumList {
         Self {
             view_type: ViewType::Library,
             library_state,
-            _pick_folder_task: None,
         }
     }
 
@@ -40,7 +38,7 @@ impl AlbumList {
         &mut self,
         view_type: ViewType,
         cx: &Context<Self>,
-    ) -> Option<Arc<Vec<AlbumInfo>>> {
+    ) -> Arc<Vec<AlbumInfo>> {
         self.view_type = view_type;
         self.get_current_items(cx)
     }
@@ -56,7 +54,7 @@ impl AlbumList {
     }
 
     /// 获取当前显示的列表（根据视图类型从 LibraryState 读取）
-    fn get_current_items(&self, cx: &Context<Self>) -> Option<Arc<Vec<AlbumInfo>>> {
+    fn get_current_items(&self, cx: &Context<Self>) -> Arc<Vec<AlbumInfo>> {
         let state = self.library_state.read(cx);
         match self.view_type {
             ViewType::Library => state.library(),
@@ -67,7 +65,7 @@ impl AlbumList {
 
     /// 刷新曲库（从数据库重新加载）
     pub fn refresh_library(&self, cx: &mut Context<Self>) {
-        let items = cx.global::<DB>().load_all_albums().unwrap_or_default();
+        let items = cx.global::<DB>().load_all_albums();
         self.library_state.update(cx, |state, cx| {
             state.update_library(items, cx);
         });
@@ -80,26 +78,28 @@ impl Render for AlbumList {
         let items = self.get_current_items(cx);
         div()
             .id("album-list")
-            .when_none(&items, |this| {
-                this.size_full()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        div()
-                            .id("no-songs-message")
-                            .h(Pixels::from(40.0))
-                            .w(Pixels::from(80.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child("添加歌曲")
-                            .bg(rgb(0xAED6F1))
-                            .rounded_lg()
-                            .cursor_pointer()
-                            .on_click(cx.listener(|this, _event, _window, cx| {
-                                // 使用异步的 FileDialog
-                                let task = cx.spawn(
+            .when(
+                items.is_empty() && self.view_type == ViewType::Library,
+                |this| {
+                    this.size_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            div()
+                                .id("no-songs-message")
+                                .h(Pixels::from(40.0))
+                                .w(Pixels::from(80.0))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child("添加歌曲")
+                                .bg(rgb(0xAED6F1))
+                                .rounded_lg()
+                                .cursor_pointer()
+                                .on_click(cx.listener(|_this, _event, _window, cx| {
+                                    // 使用异步的 FileDialog
+                                    cx.spawn(
                                     async move |this: WeakEntity<AlbumList>, cx: &mut AsyncApp| {
                                         let folder = AsyncFileDialog::new()
                                             .set_title("选择音乐文件夹")
@@ -108,24 +108,25 @@ impl Render for AlbumList {
 
                                         if let Some(folder) = folder {
                                             let path = folder.path().to_string_lossy().to_string();
-                                            let _ = cx.update(|cx: &mut App| {
+                                            cx.update(|cx: &mut App| {
                                                 cx.update_global::<DB, _>(|db, _cx| {
-                                                    let _ = db.add_metadata_to_library(&path);
+                                                    db.add_metadata_to_library(&path).unwrap();
                                                 });
-                                            });
+                                            }).unwrap();
 
                                             // 添加完成后，更新曲库
-                                            let _ = this.update(cx, |this, cx| {
+                                            this.update(cx, |this, cx| {
                                                 this.refresh_library(cx);
-                                            });
+                                            }).unwrap();
                                         }
                                     },
-                                );
-                                this._pick_folder_task = Some(Arc::new(task));
-                            })),
-                    )
-            })
-            .when_some(items, |this, items| {
+                                )
+                                .detach();
+                                })),
+                        )
+                },
+            )
+            .when(!items.is_empty(), move |this| {
                 this.size_full()
                     .flex()
                     .flex_col()
@@ -134,7 +135,7 @@ impl Render for AlbumList {
                         // 克隆 item 以获得所有权（Arc 克隆成本低）
                         let item = item.clone();
                         let item_id_l = item.id();
-                        let item_id_r = Arc::clone(&item_id_l);
+                        let item_id_r = item.id();
 
                         div()
                             .id(ElementId::Name(format!("song-{}", idx).into()))
@@ -226,7 +227,9 @@ impl Render for AlbumList {
                                     state.add_to_history(&item_id_l, cx);
                                 });
                                 // 同时写入数据库
-                                let _ = cx.global::<DB>().add_to_table(Table::History, &item_id_l);
+                                cx.global::<DB>()
+                                    .add_to_table(Table::History, &item_id_l)
+                                    .unwrap();
 
                                 cx.update_global::<Player, _>(|player, _cx| {
                                     // 播放点击的歌曲
@@ -241,8 +244,9 @@ impl Render for AlbumList {
                                         state.add_to_favorites(&item_id_r, cx);
                                     });
                                     // 同时写入数据库
-                                    let _ =
-                                        cx.global::<DB>().add_to_table(Table::Favorite, &item_id_r);
+                                    cx.global::<DB>()
+                                        .add_to_table(Table::Favorite, &item_id_r)
+                                        .unwrap();
                                 }),
                             )
                     }))

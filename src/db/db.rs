@@ -1,11 +1,11 @@
 use gpui::{Global, SharedString};
 use rusqlite::{Connection, params};
+use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 use walkdir::WalkDir;
-use std::{path::PathBuf, sync::Arc};
 
-use crate::db::table;
 use super::metadata::AlbumInfo;
+use crate::db::table;
 
 pub struct DB {
     conn: Connection,
@@ -55,53 +55,49 @@ impl DB {
 
     /// 高性能加载所有专辑信息
     /// 使用预编译语句和批量处理优化性能
-    pub fn load_all_albums(&self) -> Option<Vec<AlbumInfo>> {
-        let mut stmt = self
-            .conn
-            .prepare_cached("SELECT uuid, title, artist, album, duration, path, cover_path, cover_64 FROM library")
-            .ok()?;
+    pub fn load_all_albums(&self) -> Vec<AlbumInfo> {
+        let Ok(mut stmt) = self.conn.prepare_cached(
+            "SELECT uuid, title, artist, album, duration, path, cover_path, cover_64 FROM library",
+        ) else {
+            return Vec::new();
+        };
 
-        let album_iter = stmt.query_map([], Self::map_row_to_album).ok()?;
+        let Ok(album_iter) = stmt.query_map([], Self::map_row_to_album) else {
+            return Vec::new();
+        };
 
         // 预分配容量以减少重新分配
         let mut albums = Vec::with_capacity(1000);
-        for album in album_iter {
-            albums.push(album.ok()?);
+        for album in album_iter.flatten() {
+            albums.push(album);
         }
         albums.shrink_to_fit();
-
-        if albums.is_empty() {
-            None
-        } else {
-            Some(albums)
-        }
+        albums
     }
 
-    pub fn get_all_uuids(&self, table: table::Table) -> Option<Vec<Uuid>> {
-        let mut stmt = self
+    pub fn get_all_uuids(&self, table: table::Table) -> Vec<Uuid> {
+        let Ok(mut stmt) = self
             .conn
             .prepare_cached(&format!("SELECT uuid FROM {}", table.as_str()))
-            .ok()?;
+        else {
+            return Vec::new();
+        };
 
-        let uuid_iter = stmt
-            .query_map([], |row| {
-                let uuid_bytes: Vec<u8> = row.get(0)?;
-                let id = Uuid::from_slice(&uuid_bytes).map_err(|e| {
-                    rusqlite::Error::FromSqlConversionFailure(
-                        0,
-                        rusqlite::types::Type::Blob,
-                        Box::new(e),
-                    )
-                })?;
-                Ok(id)
-            })
-            .ok()?;
+        let Ok(uuid_iter) = stmt.query_map([], |row| {
+            let uuid_bytes: Vec<u8> = row.get(0)?;
+            let id = Uuid::from_slice(&uuid_bytes).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Blob,
+                    Box::new(e),
+                )
+            })?;
+            Ok(id)
+        }) else {
+            return Vec::new();
+        };
 
-        let mut uuids = Vec::new();
-        for uuid in uuid_iter {
-            uuids.push(uuid.ok()?);
-        }
-        if uuids.is_empty() { None } else { Some(uuids) }
+        uuid_iter.flatten().collect()
     }
 
     /// 通过 UUID 查询单个专辑

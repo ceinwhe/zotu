@@ -1,6 +1,5 @@
 use gpui::{Global,SharedString};
 use serde::{Deserialize, Serialize};
-use serde_yaml;
 use std::{fs, io, path::Path};
 
 use crate::{db::metadata::AlbumInfo,play::player::LoopMode};
@@ -66,7 +65,7 @@ impl Config {
         match fs::read_to_string(path) {
             Ok(text) => {
                 let cfg: Self =
-                    serde_yaml::from_str(&text).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                    serde_json::from_str(&text).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
                 Ok(cfg)
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
@@ -86,19 +85,7 @@ impl Config {
         }
 
         let text =
-            serde_yaml::to_string(self).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            serde_json::to_string(self).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         fs::write(path, text)
-    }
-
-    /// 修改配置：传入一个闭包对 cfg 做修改，然后立刻保存
-    pub fn update<F>(path: impl AsRef<Path>, f: F) -> io::Result<Self>
-    where
-        F: FnOnce(&mut Self),
-    {
-        let path = path.as_ref();
-        let mut cfg = Self::load_or_create(path)?;
-        f(&mut cfg);
-        cfg.save(path)?;
-        Ok(cfg)
     }
 }

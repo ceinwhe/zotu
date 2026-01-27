@@ -18,7 +18,7 @@ use std::{
 /// 音乐专辑元信息,包含标题、艺术家、专辑名、时长、文件路径及封面等
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct AlbumInfo {
-    id: Arc<Uuid>,
+    id: Uuid,
     title: SharedString,
     artist: SharedString,
     album: SharedString,
@@ -41,7 +41,7 @@ impl AlbumInfo {
         cover_64: Option<Arc<Vec<u8>>>,
     ) -> Self {
         AlbumInfo {
-            id: Arc::new(id),
+            id,
             title,
             artist,
             album,
@@ -126,7 +126,7 @@ impl AlbumInfo {
         };
 
         Ok(AlbumInfo {
-            id: Arc::new(id),
+            id,
             title: SharedString::new(title),
             artist: SharedString::new(artist),
             album: SharedString::new(album),
@@ -166,7 +166,7 @@ impl AlbumInfo {
         self.cover_64.as_ref().map(Arc::clone)
     }
 
-    pub fn id(&self) -> Arc<Uuid> {
-        Arc::clone(&self.id)
+    pub fn id(&self) -> Uuid {
+        self.id
     }
 }

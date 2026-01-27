@@ -17,7 +17,7 @@ fn main() {
         .with_assets(Assets::new("./assets"))
         .run(move |cx: &mut App| {
             // 读取或创建配置文件
-            cx.set_global(Config::load_or_create("config.yaml").unwrap());
+            cx.set_global(Config::load_or_create("config.json").unwrap());
             cx.set_global(Player::new());
             // 初始化全局数据库连接 unwrap需要改进错误处理
             cx.set_global(DB::new("metadata.db").unwrap());
@@ -29,7 +29,7 @@ fn main() {
 
             // 在应用关闭时保存配置
             cx.on_window_closed(move |app| {
-                app.global::<Config>().save("config.yaml").unwrap();
+                app.global::<Config>().save("config.json").unwrap();
             })
             .detach();
         });

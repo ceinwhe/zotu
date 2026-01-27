@@ -8,7 +8,7 @@ use crate::{
         songview::{AlbumList, ViewType},
         titlebar::TitleBar,
     },
-    db::{db::DB, library_state::LibraryState, table::Table},
+    db::{db::DB, dbstate::LibraryState, table::Table},
     play::player::Player,
 };
 
@@ -52,9 +52,7 @@ impl Zotu {
                 let list = this
                     .song_view
                     .update(cx, |view, cx| view.set_view_type(ViewType::Library, cx));
-                if let Some(list) = list {
-                    cx.global_mut::<Player>().set_playlist(list);
-                }
+                cx.global_mut::<Player>().set_playlist(list);
                 cx.notify();
             }
             SidebarItem::Favorite => {
@@ -62,9 +60,7 @@ impl Zotu {
                 let list = this
                     .song_view
                     .update(cx, |view, cx| view.set_view_type(ViewType::Favorite, cx));
-                if let Some(list) = list {
-                    cx.global_mut::<Player>().set_playlist(list);
-                }
+                cx.global_mut::<Player>().set_playlist(list);
                 cx.notify();
             }
             SidebarItem::History => {
@@ -72,9 +68,7 @@ impl Zotu {
                 let list = this
                     .song_view
                     .update(cx, |view, cx| view.set_view_type(ViewType::History, cx));
-                if let Some(list) = list {
-                    cx.global_mut::<Player>().set_playlist(list);
-                }
+                cx.global_mut::<Player>().set_playlist(list);
                 cx.notify();
             }
             SidebarItem::Custom(_) => {

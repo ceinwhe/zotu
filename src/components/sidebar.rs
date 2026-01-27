@@ -83,7 +83,6 @@ impl Render for SideBar {
             .flex_col()
             .w(Pixels::from(SIDEBAR_WIDTH))
             .h_full()
-            .gap_2()
             .child(
                 div()
                     .flex()
@@ -105,8 +104,14 @@ impl Render for SideBar {
             .child(
                 div()
                     .id("setting")
+                    .size(Pixels::from(36.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded_full()
                     .mt_auto()
                     .mx_3()
+                    .mb_3()
                     .cursor_pointer()
                     .child(svg().path("setting.svg").size_6().text_color(black()))
                     .on_click(cx.listener(|this, _evt, _window, cx| {
