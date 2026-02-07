@@ -1,8 +1,6 @@
-pub mod sidebar;
-pub mod titlebar;
-pub mod songview;
 pub mod playbar;
+pub mod playerdetail;
 pub mod setting;
-pub mod menu;
-pub mod search;
-pub mod cover;
+pub mod sidebar;
+pub mod songview;
+pub mod titlebar;

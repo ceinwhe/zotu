@@ -1,11 +1,14 @@
 use crate::play::player::{LoopMode, PlayState, Player};
-use gpui::{prelude::FluentBuilder,*};
+use gpui::{prelude::FluentBuilder, *};
 use std::sync::Arc;
+
+
 
 pub struct PlayBar {
     // 用于定时刷新 UI
     _poll_task: Option<Task<()>>,
 }
+
 
 impl PlayBar {
     pub fn new(cx: &mut Context<Self>) -> Self {
@@ -78,14 +81,20 @@ impl Render for PlayBar {
             .flex_shrink_0()
             .items_center()
             .justify_between()
+            .mt_auto()
             .border_t_1()
             .border_color(rgb(0xDDDDDD))
             // 歌曲信息区域
             .child(
                 div()
+                    .id("playbar-song-info")
                     .flex()
                     .flex_row()
                     .gap_1()
+                    .cursor_pointer()
+                    .on_click(cx.listener(|_this, _evt, _window, cx| {
+                        
+                    }))
                     .child(
                         div()
                             .flex_shrink_0()
@@ -94,6 +103,8 @@ impl Render for PlayBar {
                             .flex()
                             .content_center()
                             .justify_center()
+                            .rounded_md()
+                            .overflow_hidden()
                             .when_some(cover_64, |this, cover| {
                                 this.child(
                                     img(Arc::new(Image::from_bytes(

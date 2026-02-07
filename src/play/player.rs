@@ -110,13 +110,11 @@ impl Player {
 
     // ========== 播放控制 ==========
 
-    /// 强制开始播放
     fn play(&mut self) {
-        self.play_state = PlayState::Play;
         self.sink.play();
+        self.play_state = PlayState::Play;
     }
 
-    ///强制暂停播放
     fn pause(&mut self) {
         self.sink.pause();
         self.play_state = PlayState::Paused;
@@ -178,8 +176,6 @@ impl Player {
 
     pub fn set_playlist(&mut self, items: Arc<Vec<AlbumInfo>>) {
         let mut playlist = PlayList::new(items);
-
-        //????????
         if self.loop_mode == LoopMode::Random {
             playlist.shuffle();
         }

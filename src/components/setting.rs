@@ -5,6 +5,7 @@ const SETTING_ITEM_HEIGHT: f32 = 50.0;
 
 pub struct Setting;
 
+
 impl Render for Setting {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()

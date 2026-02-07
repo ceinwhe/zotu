@@ -2,7 +2,8 @@ use gpui::{prelude::FluentBuilder, *};
 
 use crate::{
     components::{
-        playbar::PlayBar,
+        playbar::{PlayBar},
+        playerdetail::{PlayerDetail},
         setting::Setting,
         sidebar::{SideBar, SidebarItem},
         songview::{AlbumList, ViewType},
@@ -10,6 +11,7 @@ use crate::{
     },
     db::{db::DB, dbstate::LibraryState, table::Table},
     play::player::Player,
+    ui::search::{ClearSearchEvent, SearchEvent},
 };
 
 // 主应用结构
@@ -20,6 +22,7 @@ pub struct Zotu {
     play_bar: Entity<PlayBar>,
     title_bar: Entity<TitleBar>,
     sidebar: Entity<SideBar>,
+    player_detail: Entity<PlayerDetail>,
 }
 
 impl Zotu {
@@ -34,12 +37,37 @@ impl Zotu {
             cx.new(|_cx| LibraryState::new(library_list, favorite_uuid_list, history_uuid_list));
 
         // 创建歌曲列表视图，持有 LibraryState
-        let song_view = cx.new(|_cx| AlbumList::new(library_state));
+        let song_view = cx.new(|cx| AlbumList::new(library_state, cx));
 
         let play_bar = cx.new(|cx| PlayBar::new(cx));
-        let title_bar = cx.new(|_| TitleBar);
+        let title_bar = cx.new(|cx| TitleBar::new(cx));
         let sidebar = cx.new(|_| SideBar::new());
         let setting = cx.new(|_| Setting);
+        let player_detail = cx.new(|_| PlayerDetail::new());
+
+
+        // 订阅标题栏搜索事件
+        cx.subscribe(&title_bar, |this, _that, evt: &SearchEvent, cx| {
+            this.view_type = SidebarItem::Library; // 搜索时切换到曲库视图
+            let list = this
+                .song_view
+                .update(cx, |view, cx| view.search(&evt.query, cx));
+            cx.global_mut::<Player>().set_playlist(list);
+            cx.notify();
+        })
+        .detach();
+
+        // 订阅清除搜索事件
+        cx.subscribe(&title_bar, |this, _that, _evt: &ClearSearchEvent, cx| {
+            this.view_type = SidebarItem::Library;
+            let list = this.song_view.update(cx, |view, cx| {
+                view.clear_search(cx);
+                view.set_view_type(ViewType::Library, cx)
+            });
+            cx.global_mut::<Player>().set_playlist(list);
+            cx.notify();
+        })
+        .detach();
 
         // 订阅侧边栏消息 - 通过 song_view 来访问 library_state
         cx.subscribe(&sidebar, |this, _that, evt, cx| match evt {
@@ -84,35 +112,42 @@ impl Zotu {
             play_bar,
             title_bar,
             sidebar,
+            player_detail,
         }
     }
 }
 
 impl Render for Zotu {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .size_full()
             .flex()
             .flex_row()
+            .relative()
             .bg(rgb(0xFAFAFA))
-            // 侧边栏
-            .child(self.sidebar.clone())
-            .child(
-                div()
-                    .h_full()
-                    .w_full()
-                    .flex()
-                    .flex_col()
-                    .child(self.title_bar.clone())
-                    .map(|parent| match self.view_type {
-                        SidebarItem::Settings => parent.child(self.setting.clone()),
-                        SidebarItem::Library
-                        | SidebarItem::Favorite
-                        | SidebarItem::History
-                        | SidebarItem::Custom(_) => parent
-                            .child(self.song_view.clone())
-                            .child(self.play_bar.clone()),
-                    }),
+            .when_else(
+                self.player_detail.read(cx).is_showing(),
+                // 显示播放器详情页
+                |this| this.child(self.player_detail.clone()),
+                |this| {
+                    this.child(self.sidebar.clone()).child(
+                        div()
+                            .h_full()
+                            .w_full()
+                            .flex()
+                            .flex_col()
+                            .child(self.title_bar.clone())
+                            .map(|parent| match self.view_type {
+                                SidebarItem::Settings => parent.child(self.setting.clone()),
+                                SidebarItem::Library
+                                | SidebarItem::Favorite
+                                | SidebarItem::History
+                                | SidebarItem::Custom(_) => parent
+                                    .child(self.song_view.clone())
+                                    .child(self.play_bar.clone()),
+                            }),
+                    )
+                },
             )
     }
 }

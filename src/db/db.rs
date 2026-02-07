@@ -23,6 +23,27 @@ impl DB {
              PRAGMA cache_size = 10000;
              PRAGMA temp_store = MEMORY;",
         )?;
+
+        // 创建必要的表（如果不存在）
+        // conn.execute_batch(
+        //     "CREATE TABLE IF NOT EXISTS library (
+        //         uuid BLOB PRIMARY KEY,
+        //         title TEXT NOT NULL,
+        //         artist TEXT,
+        //         album TEXT,
+        //         duration INTEGER NOT NULL,
+        //         path TEXT NOT NULL,
+        //         cover_path TEXT,
+        //         cover_64 BLOB
+        //     );
+        //     CREATE TABLE IF NOT EXISTS favorite (
+        //         uuid BLOB PRIMARY KEY
+        //     );
+        //     CREATE TABLE IF NOT EXISTS history (
+        //         uuid BLOB PRIMARY KEY
+        //     );",
+        // )?;
+
         Ok(DB { conn })
     }
 
@@ -115,11 +136,21 @@ impl DB {
         }
     }
 
-    /// 将 UUID 添加到指定表中
+    /// 将 UUID 添加到指定表中（如果已存在则忽略）
     pub fn add_to_table(&self, table: table::Table, id: &Uuid) -> rusqlite::Result<()> {
+        let mut stmt = self.conn.prepare_cached(&format!(
+            "INSERT OR IGNORE INTO {} (uuid) VALUES (?)",
+            table.as_str()
+        ))?;
+        stmt.execute(params![id.as_bytes().as_slice()])?;
+        Ok(())
+    }
+
+    /// 从指定表中移除 UUID
+    pub fn remove_from_table(&self, table: table::Table, id: &Uuid) -> rusqlite::Result<()> {
         let mut stmt = self
             .conn
-            .prepare_cached(&format!("INSERT INTO {} (uuid) VALUES (?)", table.as_str()))?;
+            .prepare_cached(&format!("DELETE FROM {} WHERE uuid = ?", table.as_str()))?;
         stmt.execute(params![id.as_bytes().as_slice()])?;
         Ok(())
     }
