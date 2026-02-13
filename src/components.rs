@@ -1,5 +1,5 @@
 pub mod playbar;
-pub mod playerdetail;
+pub mod now_playing;
 pub mod setting;
 pub mod sidebar;
 pub mod songview;

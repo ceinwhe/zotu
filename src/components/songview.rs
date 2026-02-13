@@ -167,7 +167,7 @@ impl Render for AlbumList {
                             .gap_4()
                             .child(
                                 svg()
-                                    .path("search.svg")
+                                    .path("svg/search.svg")
                                     .size(Pixels::from(64.0))
                                     .text_color(rgb(0xD1D5DB)),
                             )
@@ -273,7 +273,7 @@ impl Render for AlbumList {
                                             .when_none(&item.cover_64(), |this| {
                                                 this.child(
                                                     svg()
-                                                        .path("album.svg")
+                                                        .path("svg/album.svg")
                                                         .size_full()
                                                         .text_color(black()),
                                                 )

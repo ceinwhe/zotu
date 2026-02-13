@@ -1,4 +1,8 @@
 /target
+/assets/covers
+
+todo.md
+
 .db
-.db-shnm
+.db-shm
 .db-wal

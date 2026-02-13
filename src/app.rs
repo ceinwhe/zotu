@@ -1,9 +1,9 @@
-use gpui::{prelude::FluentBuilder, *};
+use gpui::{prelude::FluentBuilder,*};
 
 use crate::{
     components::{
-        playbar::{PlayBar},
-        playerdetail::{PlayerDetail},
+        playbar::{PlayBar,PlayBarMessage},
+        now_playing::{PlayerDetail},
         setting::Setting,
         sidebar::{SideBar, SidebarItem},
         songview::{AlbumList, ViewType},
@@ -22,7 +22,7 @@ pub struct Zotu {
     play_bar: Entity<PlayBar>,
     title_bar: Entity<TitleBar>,
     sidebar: Entity<SideBar>,
-    player_detail: Entity<PlayerDetail>,
+    now_playing: Entity<PlayerDetail>,
 }
 
 impl Zotu {
@@ -45,7 +45,7 @@ impl Zotu {
         let setting = cx.new(|_| Setting);
         let player_detail = cx.new(|_| PlayerDetail::new());
 
-
+        
         // 订阅标题栏搜索事件
         cx.subscribe(&title_bar, |this, _that, evt: &SearchEvent, cx| {
             this.view_type = SidebarItem::Library; // 搜索时切换到曲库视图
@@ -53,6 +53,15 @@ impl Zotu {
                 .song_view
                 .update(cx, |view, cx| view.search(&evt.query, cx));
             cx.global_mut::<Player>().set_playlist(list);
+            cx.notify();
+        })
+        .detach();
+
+        //订阅playbar事件
+        cx.subscribe(&play_bar, |this, _that, _evt: &PlayBarMessage, cx| {
+            this.now_playing.update(cx, |now_playing, cx| {
+                now_playing.show(cx);
+            });
             cx.notify();
         })
         .detach();
@@ -112,7 +121,7 @@ impl Zotu {
             play_bar,
             title_bar,
             sidebar,
-            player_detail,
+            now_playing: player_detail,
         }
     }
 }
@@ -126,9 +135,9 @@ impl Render for Zotu {
             .relative()
             .bg(rgb(0xFAFAFA))
             .when_else(
-                self.player_detail.read(cx).is_showing(),
+                self.now_playing.read(cx).is_showing(),
                 // 显示播放器详情页
-                |this| this.child(self.player_detail.clone()),
+                |this| this.child(self.now_playing.clone()),
                 |this| {
                     this.child(self.sidebar.clone()).child(
                         div()
@@ -151,3 +160,4 @@ impl Render for Zotu {
             )
     }
 }
+

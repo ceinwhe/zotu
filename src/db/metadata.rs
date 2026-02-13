@@ -1,5 +1,4 @@
 use gpui::SharedString;
-use serde::{Deserialize, Serialize};
 use image::{ExtendedColorType, codecs::jpeg::JpegEncoder, imageops::FilterType, load_from_memory};
 use lofty::{
     file::AudioFile,
@@ -7,6 +6,7 @@ use lofty::{
     prelude::{Accessor, TaggedFileExt},
     read_from_path,
 };
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use std::{
@@ -60,6 +60,7 @@ impl AlbumInfo {
         let id = Uuid::new_v4();
 
         let path = source_path.as_ref();
+        let cover_dir = cover_dir.as_ref();
         let tagged_file = read_from_path(path)?;
         let props = tagged_file.properties();
 
@@ -110,7 +111,8 @@ impl AlbumInfo {
                 )?;
 
                 // 落盘原图
-                let cover_path = cover_dir.as_ref().join(format!("{id}.{ext}"));
+                fs::create_dir_all(cover_dir)?;
+                let cover_path = cover_dir.join(format!("{id}.{ext}"));
                 fs::write(&cover_path, cover.data())?;
 
                 Ok((

@@ -36,19 +36,19 @@ impl SideBar {
         Self {
             origin_menu: vec![
                 Menu {
-                    icon: Some("library.svg"),
+                    icon: Some("svg/library.svg"),
                     label: "曲库",
                     item: SidebarItem::Library,
                     selected: true,
                 },
                 Menu {
-                    icon: Some("heart.svg"),
+                    icon: Some("svg/heart.svg"),
                     label: "收藏",
                     item: SidebarItem::Favorite,
                     selected: false,
                 },
                 Menu {
-                    icon: Some("history.svg"),
+                    icon: Some("svg/history.svg"),
                     label: "历史",
                     item: SidebarItem::History,
                     selected: false,
@@ -113,7 +113,7 @@ impl Render for SideBar {
                     .mx_3()
                     .mb_3()
                     .cursor_pointer()
-                    .child(svg().path("setting.svg").size_6().text_color(black()))
+                    .child(svg().path("svg/setting.svg").size_6().text_color(black()))
                     .on_click(cx.listener(|this, _evt, _window, cx| {
                         cx.emit(SidebarItem::Settings);
                         this.select_setting();

@@ -28,7 +28,7 @@ impl Render for Setting {
                     .flex_row()
                     .gap_4()
                     .cursor_pointer()
-                    .child(svg().path("folder.svg").text_color(black()).size_6())
+                    .child(svg().path("svg/folder.svg").text_color(black()).size_6())
                     .child("媒体文件")
                     .child(cx.global::<Config>().media_file.music_directory.clone())
             )

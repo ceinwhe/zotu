@@ -1,5 +1,6 @@
 use gpui::{Global, SharedString};
 use rusqlite::{Connection, params};
+use std::io;
 use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 use walkdir::WalkDir;
@@ -232,8 +233,17 @@ impl DB {
         &self,
         file_path: &PathBuf,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let cover_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("assets")
+            .join("covers");
+
         // 从文件创建 AlbumInfo 结构体
-        let album_info = AlbumInfo::new_from_file(file_path, "./assets/covers")?;
+        let album_info = AlbumInfo::new_from_file(file_path, &cover_dir).map_err(|e| {
+            io::Error::other(format!(
+                "读取元数据失败: file={:?}, cover_dir={:?}, error={}",
+                file_path, cover_dir, e
+            ))
+        })?;
 
         // 从 AlbumInfo 中提取数据
         let cover_path = album_info.cover_path().map(|s| s.to_string());

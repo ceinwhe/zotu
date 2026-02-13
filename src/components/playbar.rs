@@ -2,13 +2,16 @@ use crate::play::player::{LoopMode, PlayState, Player};
 use gpui::{prelude::FluentBuilder, *};
 use std::sync::Arc;
 
-
+pub enum PlayBarMessage {
+    NowPlayingClick,
+}
 
 pub struct PlayBar {
     // 用于定时刷新 UI
     _poll_task: Option<Task<()>>,
 }
 
+impl EventEmitter<PlayBarMessage> for PlayBar {}
 
 impl PlayBar {
     pub fn new(cx: &mut Context<Self>) -> Self {
@@ -59,14 +62,14 @@ impl Render for PlayBar {
         };
 
         let play_btn_path = match player.play_state() {
-            PlayState::Play => "pause.svg",  // 正在播放时显示暂停按钮
-            PlayState::Paused => "play.svg", // 已暂停时显示播放按钮
+            PlayState::Play => "svg/pause.svg",  // 正在播放时显示暂停按钮
+            PlayState::Paused => "svg/play.svg", // 已暂停时显示播放按钮
         };
 
         let loop_mode = match player.loop_mode() {
-            LoopMode::List => "list.svg",
-            LoopMode::Single => "single.svg",
-            LoopMode::Random => "random.svg",
+            LoopMode::List => "svg/list.svg",
+            LoopMode::Single => "svg/single.svg",
+            LoopMode::Random => "svg/random.svg",
         };
 
         let cover_64 = current_track.as_ref().and_then(|t| t.cover_64());
@@ -86,16 +89,14 @@ impl Render for PlayBar {
             .border_color(rgb(0xDDDDDD))
             // 歌曲信息区域
             .child(
+                //专辑封面和标题艺术家信息
                 div()
                     .id("playbar-song-info")
                     .flex()
                     .flex_row()
                     .gap_1()
-                    .cursor_pointer()
-                    .on_click(cx.listener(|_this, _evt, _window, cx| {
-                        
-                    }))
                     .child(
+                        //专辑封面
                         div()
                             .flex_shrink_0()
                             .size(Pixels::from(48.0))
@@ -104,26 +105,32 @@ impl Render for PlayBar {
                             .content_center()
                             .justify_center()
                             .rounded_md()
-                            .overflow_hidden()
-                            .when_some(cover_64, |this, cover| {
-                                this.child(
-                                    img(Arc::new(Image::from_bytes(
-                                        ImageFormat::Jpeg,
-                                        cover.to_vec(),
-                                    )))
-                                    .size_full(),
-                                )
-                            })
-                            .when(
-                                current_track.is_none()
-                                    || current_track.as_ref().and_then(|t| t.cover_64()).is_none(),
+                            .cursor_pointer()
+                            .when_else(
+                                cover_64.is_some(),
                                 |this| {
                                     this.child(
-                                        svg().path("album.svg").size_full().text_color(black()),
+                                        img(Arc::new(Image::from_bytes(
+                                            ImageFormat::Jpeg,
+                                            cover_64.unwrap().to_vec(),
+                                        )))
+                                        .size_full(),
                                     )
                                 },
+                                |this| {
+                                    this.child(
+                                        svg().path("svg/album.svg").size_full().text_color(black()),
+                                    )
+                                },
+                            )
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|_this, _evt, _window, cx| {
+                                    cx.emit::<PlayBarMessage>(PlayBarMessage::NowPlayingClick);
+                                }),
                             ),
                     )
+                    //标题和艺术家信息
                     .child(
                         div()
                             .flex()
@@ -159,7 +166,7 @@ impl Render for PlayBar {
                     // 上一首按钮
                     .child(
                         svg()
-                            .path("last.svg")
+                            .path("svg/last.svg")
                             .text_color(black())
                             .cursor_pointer()
                             .size_8()
@@ -191,7 +198,7 @@ impl Render for PlayBar {
                     // 下一首按钮
                     .child(
                         svg()
-                            .path("next.svg")
+                            .path("svg/next.svg")
                             .text_color(black())
                             .cursor_pointer()
                             .size_8()

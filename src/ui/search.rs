@@ -119,7 +119,7 @@ impl Render for SearchBox {
             // 搜索图标
             .child(
                 svg()
-                    .path("search.svg")
+                    .path("svg/search.svg")
                     .size_4()
                     .text_color(rgb(0x9CA3AF))
                     .mr_2()
@@ -152,7 +152,7 @@ impl Render for SearchBox {
                             .cursor_pointer()
                             .ml_2()
                             .hover(|s| s.bg(rgb(0xE5E7EB)))
-                            .child(svg().path("close.svg").size_3().text_color(rgb(0x9CA3AF)))
+                            .child(svg().path("svg/close.svg").size_3().text_color(rgb(0x9CA3AF)))
                             .on_click(cx.listener(|this, _evt, _window, cx| {
                                 this.clear_search(cx);
                             })),

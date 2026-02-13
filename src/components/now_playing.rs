@@ -46,20 +46,13 @@ impl PlayerDetail {
                 .justify_center()
                 .when_some(
                     track.and_then(|this| this.cover_path()),
-                    |this, cover_image| {
-                        this.child(img(cover_image.strip_prefix("./assets").unwrap()).size_full())
+                    |this, cover_path| {
+                        this.child(img(cover_path.replace("D:/Code/zotu/assets", "")).size_full())
                     },
                 )
                 .when(
-                    track.is_none() || track.and_then(|t| t.cover_path()).is_none(),
-                    |this| {
-                        this.child(
-                            svg()
-                                .path("album.svg")
-                                .size_full()
-                                .text_color(rgb(0x9CA3AF)),
-                        )
-                    },
+                    track.and_then(|this| this.cover_path()).is_none(),
+                    |this| this.child(svg().path("svg/album.svg").size_full().text_color(black())),
                 ),
         )
     }
@@ -69,14 +62,14 @@ impl PlayerDetail {
         let player = cx.global::<Player>();
 
         let play_btn_path = match player.play_state() {
-            PlayState::Play => "pause.svg",
-            PlayState::Paused => "play.svg",
+            PlayState::Play => "svg/pause.svg",
+            PlayState::Paused => "svg/play.svg",
         };
 
         let loop_mode = match player.loop_mode() {
-            LoopMode::List => "list.svg",
-            LoopMode::Single => "single.svg",
-            LoopMode::Random => "random.svg",
+            LoopMode::List => "svg/list.svg",
+            LoopMode::Single => "svg/single.svg",
+            LoopMode::Random => "svg/random.svg",
         };
 
         div().child(
@@ -91,7 +84,7 @@ impl PlayerDetail {
                     svg()
                         .path(loop_mode)
                         .size_6()
-                        .text_color(rgb(0x6B7280))
+                        .text_color(black())
                         .cursor_pointer()
                         .on_mouse_down(
                             MouseButton::Left,
@@ -105,7 +98,7 @@ impl PlayerDetail {
                 // 上一首
                 .child(
                     svg()
-                        .path("last.svg")
+                        .path("svg/last.svg")
                         .size_6()
                         .text_color(rgb(0x374151))
                         .cursor_pointer()
@@ -138,7 +131,7 @@ impl PlayerDetail {
                 // 下一首
                 .child(
                     svg()
-                        .path("next.svg")
+                        .path("svg/next.svg")
                         .size_10()
                         .text_color(rgb(0x374151))
                         .cursor_pointer()
@@ -169,7 +162,7 @@ impl Render for PlayerDetail {
             .child(
                 div().flex().items_start().justify_start().child(
                     svg()
-                        .path("close.svg")
+                        .path("svg/close.svg")
                         .id("close")
                         .size_6()
                         .text_color(rgb(0x6B7280))

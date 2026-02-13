@@ -46,25 +46,11 @@ impl Render for TitleBar {
             .flex()
             .flex_row()
             .items_center()
-            .justify_around()
+            .justify_between()
             .bg(rgb(0xFAFAFA))
-            .px_4()
-            // 左侧拖拽区域
-            .child(
-                div()
-                    .h_full()
-                    .flex_1()
-                    .window_control_area(WindowControlArea::Drag)
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|_this, _event, window, _cx| {
-                            window.start_window_move();
-                        }),
-                    ),
-            )
-            // 中间搜索框
+            // 搜索框
             .child(self.search_box.clone())
-            // 右侧拖拽区域
+            // 拖拽区域
             .child(
                 div()
                     .h_full()
@@ -82,12 +68,12 @@ impl Render for TitleBar {
                 div()
                     .h_full()
                     .w_auto()
-                    .gap_4()
                     .flex()
                     .flex_row()
+                    .gap_4()
                     .child(
                         svg()
-                            .path("minus.svg")
+                            .path("svg/minus.svg")
                             .w(px(30.0))
                             .h(px(30.0))
                             .text_color(black())
@@ -102,7 +88,7 @@ impl Render for TitleBar {
                     )
                     .child(
                         svg()
-                            .path("stack.svg")
+                            .path("svg/stack.svg")
                             .w(px(30.0))
                             .h(px(30.0))
                             .text_color(black())
@@ -117,7 +103,7 @@ impl Render for TitleBar {
                     )
                     .child(
                         svg()
-                            .path("close.svg")
+                            .path("svg/close.svg")
                             .w(px(30.0))
                             .h(px(30.0))
                             .text_color(black())
