@@ -26,24 +26,24 @@ impl DB {
         )?;
 
         // 创建必要的表（如果不存在）
-        // conn.execute_batch(
-        //     "CREATE TABLE IF NOT EXISTS library (
-        //         uuid BLOB PRIMARY KEY,
-        //         title TEXT NOT NULL,
-        //         artist TEXT,
-        //         album TEXT,
-        //         duration INTEGER NOT NULL,
-        //         path TEXT NOT NULL,
-        //         cover_path TEXT,
-        //         cover_64 BLOB
-        //     );
-        //     CREATE TABLE IF NOT EXISTS favorite (
-        //         uuid BLOB PRIMARY KEY
-        //     );
-        //     CREATE TABLE IF NOT EXISTS history (
-        //         uuid BLOB PRIMARY KEY
-        //     );",
-        // )?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS library (
+                uuid BLOB PRIMARY KEY,
+                title TEXT NOT NULL,
+                artist TEXT,
+                album TEXT,
+                duration INTEGER NOT NULL,
+                path TEXT NOT NULL,
+                cover_path TEXT,
+                cover_64 BLOB
+            );
+            CREATE TABLE IF NOT EXISTS favorite (
+                uuid BLOB PRIMARY KEY
+            );
+            CREATE TABLE IF NOT EXISTS history (
+                uuid BLOB PRIMARY KEY
+            );",
+        )?;
 
         Ok(DB { conn })
     }
@@ -251,7 +251,7 @@ impl DB {
 
         // 插入数据库
         self.conn.execute(
-            "INSERT INTO library (uuid, title, artist, album, duration, path, cover_path, cover_64) 
+            "INSERT INTO library (uuid, title, artist, album, duration, path, cover_path, cover_64)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 album_info.id().as_bytes().as_slice(),

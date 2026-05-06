@@ -1,5 +1,7 @@
-use gpui::*;
+use gpui::{prelude::FluentBuilder, *};
 use uuid::Uuid;
+
+use crate::theme::*;
 
 /// 右键菜单项的动作类型
 #[derive(Clone)]
@@ -8,15 +10,8 @@ pub enum MenuAction {
     AddToFavorite(Uuid),
     /// 从收藏中移除
     RemoveFromFavorite(Uuid),
-    // === 未来可扩展的动作 ===
-    // AddToPlaylist(String),      // 添加到播放列表
-    // RemoveFromPlaylist(String), // 从播放列表移除
-    // PlayNext,                   // 下一首播放
-    // AddToQueue,                 // 添加到播放队列
-    // ShowInfo,                   // 显示歌曲信息
-    // EditMetadata,               // 编辑元数据
-    // DeleteFromLibrary,          // 从曲库删除
-    // OpenInExplorer,             // 在文件管理器中打开
+    /// 下一首播放
+    PlayNext(Uuid),
 }
 
 /// 菜单项配置
@@ -24,34 +19,36 @@ pub enum MenuAction {
 pub struct MenuItem {
     /// 显示的标签
     pub label: SharedString,
-    /// 图标路径（可选）
-    pub icon: Option<SharedString>,
     /// 关联的动作
     pub action: MenuAction,
+    /// 是否危险操作（红色文字）
+    pub danger: bool,
 }
 
 impl MenuItem {
     pub fn new(label: impl Into<SharedString>, action: MenuAction) -> Self {
         Self {
             label: label.into(),
-            icon: None,
             action,
+            danger: false,
         }
     }
 
-    pub fn icon(mut self, icon: impl Into<SharedString>) -> Self {
-        self.icon = Some(icon.into());
+    pub fn danger(mut self) -> Self {
+        self.danger = true;
         self
     }
 }
 
 pub struct MenuContext {
-    items: Vec<MenuItem>,
+    /// 当前上下文的目标 UUID
     uuid: Option<Uuid>,
     /// 菜单是否显示
     visible: bool,
     /// 菜单位置
     position: Point<Pixels>,
+    /// 目标是否已收藏（用于动态显示菜单项）
+    is_favorite: bool,
 }
 
 impl EventEmitter<MenuAction> for MenuContext {}
@@ -59,18 +56,25 @@ impl EventEmitter<MenuAction> for MenuContext {}
 impl MenuContext {
     pub fn new() -> Self {
         Self {
-            items: Vec::new(),
             uuid: None,
             visible: false,
             position: Point::default(),
+            is_favorite: false,
         }
     }
 
     /// 显示菜单
-    pub fn show(&mut self, uuid: &Uuid, cx: &mut Context<Self>, pos: Point<Pixels>) {
+    pub fn show(
+        &mut self,
+        uuid: &Uuid,
+        cx: &mut Context<Self>,
+        pos: Point<Pixels>,
+        is_favorite: bool,
+    ) {
         self.uuid = Some(*uuid);
         self.position = pos;
         self.visible = true;
+        self.is_favorite = is_favorite;
         cx.notify();
     }
 
@@ -80,61 +84,89 @@ impl MenuContext {
         cx.notify();
     }
 
-    /// 构建菜单项列表
-    fn build_menu_items(&mut self, item: MenuItem) {
-        self.items.push(item);
+    /// 构建菜单项列表（根据当前状态动态生成）
+    fn build_menu_items(&self) -> Vec<MenuItem> {
+        let uuid = self.uuid.unwrap_or_default();
+        let mut items = Vec::new();
+
+        if self.is_favorite {
+            items.push(MenuItem::new(
+                "从收藏中移除",
+                MenuAction::RemoveFromFavorite(uuid),
+            ));
+        } else {
+            items.push(MenuItem::new("添加到收藏", MenuAction::AddToFavorite(uuid)));
+        }
+
+        items.push(MenuItem::new("下一首播放", MenuAction::PlayNext(uuid)));
+
+        items
     }
 
     /// 执行菜单动作
-    fn execute_action(&mut self, evt: &MenuAction, cx: &mut Context<Self>) {
-
-        cx.emit(evt.clone());
-        // 执行完动作后隐藏菜单
+    fn execute_action(&mut self, action: &MenuAction, cx: &mut Context<Self>) {
+        cx.emit(action.clone());
         self.hide(cx);
     }
-
 }
 
 impl Render for MenuContext {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let item = MenuItem::new("添加到收藏", MenuAction::AddToFavorite(self.uuid.unwrap_or_default()));
-
-        self.build_menu_items(item);
-
-        // 菜单位置：在鼠标点击位置显示
+        let menu_items = self.build_menu_items();
         let menu_x = self.position.x;
         let menu_y = self.position.y;
 
-        div()
-            .id("menu")
-            .absolute()
-            .left(menu_x)
-            .top(menu_y)
-            .min_w(px(160.0))
-            .children(self.items.iter().map(|this| {
-                let action = this.action.clone();
-                div()
-                    .flex()
-                    .flex_row()
-                    .child(this.label.clone())
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |menu, _evt, _window, cx| {
-                            menu.execute_action(&action, cx);
-                        }),
-                    )
-            }))
-            .on_hover(cx.listener(|this, hovered: &bool, _window, cx| {
-                if !*hovered {
-                    this.hide(cx);
-                }
-            }))
-            // 阻止所有鼠标事件穿透
-            .on_mouse_down(MouseButton::Left, |_evt, _window, cx| {
-                cx.stop_propagation();
-            })
-            .on_mouse_down(MouseButton::Right, |_evt, _window, cx| {
-                cx.stop_propagation();
-            })
+        // 点击菜单外部时关闭（id() 先将 Div 转为 Stateful<Div>，使 when 闭包类型匹配）
+        div().id("menu-backdrop").when(self.visible, |this| {
+            this.absolute()
+                .size_full()
+                .top_0()
+                .left_0()
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|this, _evt, _window, cx| {
+                        this.hide(cx);
+                    }),
+                )
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(|this, _evt, _window, cx| {
+                        this.hide(cx);
+                    }),
+                )
+                .child(
+                    div()
+                        .id("context-menu")
+                        .absolute()
+                        .left(menu_x)
+                        .top(menu_y)
+                        .min_w(px(180.0))
+                        .bg(bg_content())
+                        .rounded_lg()
+                        .shadow_md()
+                        .border_1()
+                        .border_color(border_default())
+                        .py_1()
+                        .children(menu_items.iter().map(|item| {
+                            let action = item.action.clone();
+                            let is_danger = item.danger;
+                            div()
+                                .px_3()
+                                .py_2()
+                                .text_sm()
+                                .cursor_pointer()
+                                .when(is_danger, |this| this.text_color(accent_red()))
+                                .when(!is_danger, |this| this.text_color(text_secondary()))
+                                .hover(|s| s.bg(bg_active()))
+                                .child(item.label.clone())
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(move |menu, _evt, _window, cx| {
+                                        menu.execute_action(&action, cx);
+                                    }),
+                                )
+                        })),
+                )
+        })
     }
 }

@@ -1,4 +1,4 @@
 pub mod metadata;
-pub mod db;
+pub mod database;
 pub mod table;
 pub mod dbstate;

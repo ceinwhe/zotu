@@ -1,5 +1,8 @@
 use gpui::*;
-use zotu::{app::Zotu, assets::Assets, config::Config, db::db::DB, play::player::Player};
+use zotu::{
+    app::Zotu, assets::Assets, config::Config, db::database::DB, error::log_error,
+    play::player::Player,
+};
 
 fn main() {
     let window_options = WindowOptions {
@@ -16,20 +19,43 @@ fn main() {
     Application::new()
         .with_assets(Assets::new("./assets"))
         .run(move |cx: &mut App| {
-            // 读取或创建配置文件
-            cx.set_global(Config::load_or_create("config.json").unwrap());
+            // 读取或创建配置文件（失败时使用默认配置）
+            let config = match Config::load_or_create("config.json") {
+                Ok(cfg) => cfg,
+                Err(e) => {
+                    log_error(&e, "加载配置文件失败，使用默认配置");
+                    Config::default()
+                }
+            };
+            cx.set_global(config);
+
             cx.set_global(Player::new());
-            // 初始化全局数据库连接 unwrap需要改进错误处理
-            cx.set_global(DB::new("metadata.db").unwrap());
 
-            cx.open_window(window_options, |window, cx| {
+            // 初始化全局数据库连接（失败时退出）
+            match DB::new("metadata.db") {
+                Ok(db) => cx.set_global(db),
+                Err(e) => {
+                    log_error(&e, "数据库初始化失败，应用无法启动");
+                    eprintln!("[FATAL] 数据库连接失败: {}", e);
+                    return;
+                }
+            };
+
+            match cx.open_window(window_options, |window, cx| {
                 cx.new(|cx| Zotu::new(window, cx))
-            })
-            .unwrap();
+            }) {
+                Ok(_) => {}
+                Err(e) => {
+                    log_error(&e, "打开窗口失败");
+                    return;
+                }
+            }
 
-            // 在应用关闭时保存配置
+            // 在应用关闭时保存配置（忽略保存错误）
             cx.on_window_closed(move |app| {
-                app.global::<Config>().save("config.json").unwrap();
+                if let Err(e) = app.global::<Config>().save("config.json") {
+                    eprintln!("[WARN] 保存配置失败: {}", e);
+                }
             })
             .detach();
         });

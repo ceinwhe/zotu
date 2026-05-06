@@ -1,7 +1,6 @@
 use gpui::{prelude::FluentBuilder, *};
 
-const SIDEBAR_WIDTH: f32 = 180.0;
-const ITEM_HEIGHT: f32 = 50.0;
+use crate::theme::*;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum SidebarItem {
@@ -9,10 +8,11 @@ pub enum SidebarItem {
     Favorite,
     History,
     Settings,
+    #[allow(dead_code)]
     Custom(usize),
 }
 
-/// 原生菜单项配置
+/// 侧边栏菜单项配置
 struct Menu {
     icon: Option<&'static str>,
     label: &'static str,
@@ -24,7 +24,7 @@ struct Menu {
 pub struct SideBar {
     origin_menu: Vec<Menu>,
 
-    // 未来可扩展的自定义菜单
+    /// 未来可扩展的自定义菜单
     #[allow(dead_code)]
     custom_menu: Vec<Menu>,
 
@@ -83,23 +83,29 @@ impl Render for SideBar {
             .flex_col()
             .w(Pixels::from(SIDEBAR_WIDTH))
             .h_full()
+            .bg(bg_sidebar())
             .child(
                 div()
                     .flex()
                     .justify_center()
                     .items_center()
                     .font_weight(FontWeight::SEMIBOLD)
+                    .h(Pixels::from(TITLEBAR_HEIGHT))
+                    .text_color(text_primary())
                     .child("Zotu"),
             )
             .children(self.origin_menu.iter().map(|menu| {
-                let item = menu.item.clone();
-                render_origin_item(menu.label, menu.icon, menu.label)
-                    .when(menu.selected, |this| this.bg(rgb(0xE5E7EB)))
-                    .on_click(cx.listener(move |this, _evt, _window, cx| {
-                        this.select_menus(&item);
-                        cx.emit(item);
-                        cx.notify();
-                    }))
+                let item = menu.item;
+                render_menu_item(menu.label, menu.icon, menu.label)
+                    .when(menu.selected, |this| this.bg(bg_active()))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _evt, _window, cx| {
+                            this.select_menus(&item);
+                            cx.emit(item);
+                            cx.notify();
+                        }),
+                    )
             }))
             .child(
                 div()
@@ -113,19 +119,27 @@ impl Render for SideBar {
                     .mx_3()
                     .mb_3()
                     .cursor_pointer()
-                    .child(svg().path("svg/setting.svg").size_6().text_color(black()))
-                    .on_click(cx.listener(|this, _evt, _window, cx| {
-                        cx.emit(SidebarItem::Settings);
-                        this.select_setting();
-                        cx.notify();
-                    }))
-                    .when(self.select_setting, |this| this.bg(rgb(0xE5E7EB))),
+                    .child(
+                        svg()
+                            .path("svg/setting.svg")
+                            .size_6()
+                            .text_color(text_secondary()),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _evt, _window, cx| {
+                            cx.emit(SidebarItem::Settings);
+                            this.select_setting();
+                            cx.notify();
+                        }),
+                    )
+                    .when(self.select_setting, |this| this.bg(bg_active())),
             )
     }
 }
 
 /// 渲染单个菜单项
-fn render_origin_item(
+fn render_menu_item(
     id: impl Into<ElementId>,
     icon: Option<&'static str>,
     label: impl IntoElement,
@@ -134,15 +148,21 @@ fn render_origin_item(
         .id(id)
         .flex()
         .items_center()
-        .h(px(ITEM_HEIGHT))
+        .h(px(MENU_ITEM_HEIGHT))
         .px_1()
         .mx_3()
         .mt_1()
         .rounded_lg()
         .cursor_pointer()
         .when_some(icon, |this, icon| {
-            this.child(svg().path(icon).size_6().text_color(black()))
+            this.child(
+                svg()
+                    .path(icon)
+                    .size_6()
+                    .text_color(text_secondary())
+                    .mr_2(),
+            )
         })
         .child(label)
-        .hover(|s| s.bg(rgb(0xE5E7EB)))
+        .hover(|s| s.bg(bg_active()))
 }

@@ -3,9 +3,10 @@ use rfd::AsyncFileDialog;
 use std::sync::Arc;
 
 use crate::{
-    db::{db::DB, dbstate::LibraryState, metadata::AlbumInfo, table::Table},
+    db::{database::DB, dbstate::LibraryState, metadata::AlbumInfo, table::Table},
     play::player::Player,
-    ui::menu::{MenuContext, MenuAction},
+    theme::*,
+    ui::menu::{MenuAction, MenuContext},
     util::format_duration,
 };
 
@@ -37,22 +38,41 @@ impl AlbumList {
     pub fn new(library_state: Entity<LibraryState>, cx: &mut Context<Self>) -> Self {
         let context_menu = cx.new(|_| MenuContext::new());
 
-        cx.subscribe(&context_menu, |this,_that,evt: &MenuAction,cx|{
+        cx.subscribe(&context_menu, |this, _that, evt: &MenuAction, cx| {
             match evt {
                 MenuAction::AddToFavorite(album_id) => {
-                    // 添加到收藏
+                    // 添加到收藏（内存 + 数据库）
                     this.library_state.update(cx, |state, cx| {
                         state.add_to_favorites(album_id, cx);
                     });
+                    if let Err(e) = cx.global::<DB>().add_to_table(Table::Favorite, album_id) {
+                        eprintln!("[WARN] 写入收藏到数据库失败: {}", e);
+                    }
                 }
                 MenuAction::RemoveFromFavorite(album_id) => {
-                    // 从收藏移除
+                    // 从收藏移除（内存 + 数据库）
                     this.library_state.update(cx, |state, cx| {
                         state.remove_from_favorites(album_id, cx);
                     });
+                    if let Err(e) = cx
+                        .global::<DB>()
+                        .remove_from_table(Table::Favorite, album_id)
+                    {
+                        eprintln!("[WARN] 从数据库移除收藏失败: {}", e);
+                    }
+                }
+                MenuAction::PlayNext(album_id) => {
+                    // 下一首播放：查找歌曲并播放
+                    let item_clone = this.library_state.read(cx).get_by_id(album_id).cloned();
+                    if let Some(item) = item_clone {
+                        cx.update_global::<Player, _>(|player, _cx| {
+                            player.play_track(&item);
+                        });
+                    }
                 }
             }
-        }).detach();
+        })
+        .detach();
 
         Self {
             view_type: ViewType::Library,
@@ -169,18 +189,18 @@ impl Render for AlbumList {
                                 svg()
                                     .path("svg/search.svg")
                                     .size(Pixels::from(64.0))
-                                    .text_color(rgb(0xD1D5DB)),
+                                    .text_color(text_muted()),
                             )
                             .child(
                                 div()
                                     .text_lg()
-                                    .text_color(rgb(0x6B7280))
+                                    .text_color(text_tertiary())
                                     .child(format!("未找到 \"{}\" 相关结果", search_query)),
                             )
                             .child(
                                 div()
                                     .text_sm()
-                                    .text_color(rgb(0x9CA3AF))
+                                    .text_color(text_placeholder())
                                     .child("请尝试其他关键词"),
                             )
                     })
@@ -200,35 +220,38 @@ impl Render for AlbumList {
                                         .items_center()
                                         .justify_center()
                                         .child("添加歌曲")
-                                        .bg(rgb(0xAED6F1))
+                                        .bg(accent_blue())
                                         .rounded_lg()
                                         .cursor_pointer()
-                                        .on_click(cx.listener(|_this, _event, _window, cx| {
-                                            // 使用异步的 FileDialog
-                                            cx.spawn(
-                                    async move |this: WeakEntity<AlbumList>, cx: &mut AsyncApp| {
-                                        let folder = AsyncFileDialog::new()
-                                            .set_title("选择音乐文件夹")
-                                            .pick_folder()
-                                            .await;
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener(|_this, _event, _window, cx| {
+                                                // 使用异步的 FileDialog
+                                                cx.spawn(
+                                                    async move |this: WeakEntity<AlbumList>, cx: &mut AsyncApp| {
+                                                        let folder = AsyncFileDialog::new()
+                                                            .set_title("选择音乐文件夹")
+                                                            .pick_folder()
+                                                            .await;
 
-                                        if let Some(folder) = folder {
-                                            let path = folder.path().to_string_lossy().to_string();
-                                            cx.update(|cx: &mut App| {
-                                                cx.update_global::<DB, _>(|db, _cx| {
-                                                    db.add_metadata_to_library(&path).unwrap();
-                                                });
-                                            }).unwrap();
+                                                        if let Some(folder) = folder {
+                                                            let path = folder.path().to_string_lossy().to_string();
+                                                            cx.update(|cx: &mut App| {
+                                                                cx.update_global::<DB, _>(|db, _cx| {
+                                                                    db.add_metadata_to_library(&path).unwrap();
+                                                                });
+                                                            }).unwrap();
 
-                                            // 添加完成后，更新曲库
-                                            this.update(cx, |this, cx| {
-                                                this.refresh_library(cx);
-                                            }).unwrap();
-                                        }
-                                    },
-                                )
-                                .detach();
-                                        })),
+                                                            // 添加完成后，更新曲库
+                                                            this.update(cx, |this, cx| {
+                                                                this.refresh_library(cx);
+                                                            }).unwrap();
+                                                        }
+                                                    },
+                                                )
+                                                .detach();
+                                            }),
+                                        ),
                                 )
                         },
                     )
@@ -250,14 +273,15 @@ impl Render for AlbumList {
                                     .px_4()
                                     .py_2()
                                     .border_b_1()
-                                    .bg(rgb(0xFAFAF9))
-                                    .hover(move |style| style.bg(rgb(0xEEEEEE)))
+                                    .border_color(border_default())
+                                    .bg(bg_card())
+                                    .hover(move |style| style.bg(bg_hover()))
                                     .cursor_pointer()
                                     // 专辑封面
                                     .child(
                                         div()
                                             .flex_shrink_0()
-                                            .size(Pixels::from(48.0))
+                                            .size(Pixels::from(COVER_THUMB_SIZE))
                                             .flex()
                                             .content_center()
                                             .justify_center()
@@ -275,7 +299,7 @@ impl Render for AlbumList {
                                                     svg()
                                                         .path("svg/album.svg")
                                                         .size_full()
-                                                        .text_color(black()),
+                                                        .text_color(text_muted()),
                                                 )
                                             }),
                                     )
@@ -328,30 +352,38 @@ impl Render for AlbumList {
                                             .font_weight(FontWeight::LIGHT)
                                             .child(format!("{}", format_duration(item.duration()))),
                                     )
-                                    .on_click({
-                                        let item_for_play = item.clone();
-                                        cx.listener(move |this, _event, _window, cx| {
-                                            // 通过 LibraryState 添加到历史
-                                            this.library_state.update(cx, |state, cx| {
-                                                state.add_to_history(&item.id(), cx);
-                                            });
-                                            // 同时写入数据库
-                                            cx.global::<DB>()
-                                                .add_to_table(Table::History, &item.id())
-                                                .unwrap();
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        {
+                                            let item_for_play = item.clone();
+                                            cx.listener(move |this, _event, _window, cx| {
+                                                // 通过 LibraryState 添加到历史
+                                                this.library_state.update(cx, |state, cx| {
+                                                    state.add_to_history(&item.id(), cx);
+                                                });
+                                                // 同时写入数据库（忽略写入错误）
+                                                let _ = cx
+                                                    .global::<DB>()
+                                                    .add_to_table(Table::History, &item.id());
 
-                                            cx.update_global::<Player, _>(|player, _cx| {
-                                                // 播放点击的歌曲
-                                                player.play_track(&item_for_play);
-                                            });
-                                        })
-                                    })
+                                                cx.update_global::<Player, _>(|player, _cx| {
+                                                    // 播放点击的歌曲
+                                                    player.play_track(&item_for_play);
+                                                });
+                                            })
+                                        },
+                                    )
                                     .on_mouse_down(MouseButton::Right, {
                                         cx.listener(
                                             move |this, evt: &MouseDownEvent, _window, cx| {
+                                                // 检查当前是否已收藏
+                                                let is_fav = this
+                                                    .library_state
+                                                    .read(cx)
+                                                    .is_favorite(&item_id);
                                                 // 显示右键菜单
                                                 this.context_menu.update(cx, move |menu, cx| {
-                                                    menu.show(&item_id, cx, evt.position);
+                                                    menu.show(&item_id, cx, evt.position, is_fav);
                                                 });
                                             },
                                         )

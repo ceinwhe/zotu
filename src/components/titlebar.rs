@@ -1,8 +1,9 @@
 use gpui::*;
 
-use crate::ui::search::{ClearSearchEvent, SearchBox, SearchEvent};
-
-pub const TITLEBAR_HEIGHT: f32 = 70.0;
+use crate::{
+    theme::*,
+    ui::search::{ClearSearchEvent, SearchBox, SearchEvent},
+};
 
 pub struct TitleBar {
     /// 搜索框组件
@@ -47,7 +48,7 @@ impl Render for TitleBar {
             .flex_row()
             .items_center()
             .justify_between()
-            .bg(rgb(0xFAFAFA))
+            .bg(bg_app())
             // 搜索框
             .child(self.search_box.clone())
             // 拖拽区域
@@ -70,13 +71,13 @@ impl Render for TitleBar {
                     .w_auto()
                     .flex()
                     .flex_row()
-                    .gap_4()
+                    // 最小化
                     .child(
                         svg()
                             .path("svg/minus.svg")
                             .w(px(30.0))
                             .h(px(30.0))
-                            .text_color(black())
+                            .text_color(text_secondary())
                             .window_control_area(WindowControlArea::Min)
                             .cursor_pointer()
                             .on_mouse_down(
@@ -86,12 +87,13 @@ impl Render for TitleBar {
                                 }),
                             ),
                     )
+                    // 最大化
                     .child(
                         svg()
                             .path("svg/stack.svg")
                             .w(px(30.0))
                             .h(px(30.0))
-                            .text_color(black())
+                            .text_color(text_secondary())
                             .cursor_pointer()
                             .window_control_area(WindowControlArea::Max)
                             .on_mouse_down(
@@ -101,15 +103,16 @@ impl Render for TitleBar {
                                 }),
                             ),
                     )
+                    // 关闭
                     .child(
                         svg()
                             .path("svg/close.svg")
                             .w(px(30.0))
                             .h(px(30.0))
-                            .text_color(black())
+                            .text_color(text_secondary())
                             .window_control_area(WindowControlArea::Close)
                             .cursor_pointer()
-                            .hover(|style| style.bg(rgb(0xFF6467)))
+                            .hover(|style| style.bg(accent_red()))
                             .on_mouse_down(
                                 MouseButton::Left,
                                 cx.listener(|_this, _event, window, _cx| {

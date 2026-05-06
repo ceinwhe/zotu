@@ -1,5 +1,7 @@
 use gpui::{prelude::FluentBuilder, *};
 
+use crate::theme::*;
+
 /// 搜索事件
 #[derive(Clone)]
 pub struct SearchEvent {
@@ -78,26 +80,25 @@ impl Render for SearchBox {
         div()
             .id("search-container")
             .key_context("SearchInput")
-            .w(px(300.0))
-            .h(px(36.0))
+            .w(px(SEARCH_BOX_WIDTH))
+            .h(px(SEARCH_BOX_HEIGHT))
             .flex()
             .flex_row()
             .items_center()
             .px_3()
-            .bg(rgb(0xF3F4F6))
+            .bg(bg_input())
             .rounded_lg()
             .border_1()
-            .border_color(if is_focused {
-                rgb(0x3B82F6)
-            } else {
-                rgb(0xE5E7EB)
-            })
+            .border_color(input_focus_ring(is_focused))
             .cursor_text()
             .track_focus(&self.focus_handle)
-            .on_click(cx.listener(|this, _evt, window, _cx| {
-                this.is_focused = true;
-                window.focus(&this.focus_handle);
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _evt, window, _cx| {
+                    this.is_focused = true;
+                    window.focus(&this.focus_handle);
+                }),
+            )
             .on_key_down(cx.listener(|this, evt: &KeyDownEvent, _window, cx| {
                 match evt.keystroke.key.as_str() {
                     "backspace" => {
@@ -109,7 +110,6 @@ impl Render for SearchBox {
                         cx.notify();
                     }
                     _ => {
-                        // 处理普通字符输入
                         if let Some(key_char) = &evt.keystroke.key_char {
                             this.handle_key_input(key_char, cx);
                         }
@@ -121,7 +121,7 @@ impl Render for SearchBox {
                 svg()
                     .path("svg/search.svg")
                     .size_4()
-                    .text_color(rgb(0x9CA3AF))
+                    .text_color(text_placeholder())
                     .mr_2()
                     .flex_shrink_0(),
             )
@@ -134,8 +134,8 @@ impl Render for SearchBox {
                     .items_center()
                     .overflow_hidden()
                     .text_sm()
-                    .when(is_placeholder, |this| this.text_color(rgb(0x9CA3AF)))
-                    .when(!is_placeholder, |this| this.text_color(rgb(0x374151)))
+                    .when(is_placeholder, |this| this.text_color(text_placeholder()))
+                    .when(!is_placeholder, |this| this.text_color(text_secondary()))
                     .child(display_text),
             )
             // 清除按钮
@@ -151,11 +151,19 @@ impl Render for SearchBox {
                             .rounded_full()
                             .cursor_pointer()
                             .ml_2()
-                            .hover(|s| s.bg(rgb(0xE5E7EB)))
-                            .child(svg().path("svg/close.svg").size_3().text_color(rgb(0x9CA3AF)))
-                            .on_click(cx.listener(|this, _evt, _window, cx| {
-                                this.clear_search(cx);
-                            })),
+                            .hover(|s| s.bg(bg_active()))
+                            .child(
+                                svg()
+                                    .path("svg/close.svg")
+                                    .size_3()
+                                    .text_color(text_placeholder()),
+                            )
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|this, _evt, _window, cx| {
+                                    this.clear_search(cx);
+                                }),
+                            ),
                     )
                 } else {
                     el

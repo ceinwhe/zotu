@@ -1,16 +1,17 @@
-use gpui::{prelude::FluentBuilder,*};
+use gpui::{prelude::FluentBuilder, *};
 
 use crate::{
     components::{
-        playbar::{PlayBar,PlayBarMessage},
-        now_playing::{PlayerDetail},
+        now_playing::PlayerDetail,
+        playbar::{PlayBar, PlayBarMessage},
         setting::Setting,
         sidebar::{SideBar, SidebarItem},
         songview::{AlbumList, ViewType},
         titlebar::TitleBar,
     },
-    db::{db::DB, dbstate::LibraryState, table::Table},
+    db::{database::DB, dbstate::LibraryState, table::Table},
     play::player::Player,
+    theme::*,
     ui::search::{ClearSearchEvent, SearchEvent},
 };
 
@@ -45,10 +46,9 @@ impl Zotu {
         let setting = cx.new(|_| Setting);
         let player_detail = cx.new(|_| PlayerDetail::new());
 
-        
         // 订阅标题栏搜索事件
         cx.subscribe(&title_bar, |this, _that, evt: &SearchEvent, cx| {
-            this.view_type = SidebarItem::Library; // 搜索时切换到曲库视图
+            this.view_type = SidebarItem::Library;
             let list = this
                 .song_view
                 .update(cx, |view, cx| view.search(&evt.query, cx));
@@ -57,7 +57,7 @@ impl Zotu {
         })
         .detach();
 
-        //订阅playbar事件
+        // 订阅 playbar 事件（点击封面打开详情页）
         cx.subscribe(&play_bar, |this, _that, _evt: &PlayBarMessage, cx| {
             this.now_playing.update(cx, |now_playing, cx| {
                 now_playing.show(cx);
@@ -78,7 +78,7 @@ impl Zotu {
         })
         .detach();
 
-        // 订阅侧边栏消息 - 通过 song_view 来访问 library_state
+        // 订阅侧边栏消息
         cx.subscribe(&sidebar, |this, _that, evt, cx| match evt {
             SidebarItem::Settings => {
                 this.view_type = SidebarItem::Settings;
@@ -133,7 +133,8 @@ impl Render for Zotu {
             .flex()
             .flex_row()
             .relative()
-            .bg(rgb(0xFAFAFA))
+            .bg(bg_app())
+            .text_color(text_primary())
             .when_else(
                 self.now_playing.read(cx).is_showing(),
                 // 显示播放器详情页
@@ -160,4 +161,3 @@ impl Render for Zotu {
             )
     }
 }
-

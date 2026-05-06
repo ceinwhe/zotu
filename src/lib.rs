@@ -1,8 +1,10 @@
 pub mod app;
 pub mod assets;
 pub mod components;
-pub mod ui;
-pub mod db;
-pub mod play;
-pub mod util;
 pub mod config;
+pub mod db;
+pub mod error;
+pub mod play;
+pub mod theme;
+pub mod ui;
+pub mod util;

@@ -103,7 +103,7 @@ impl AlbumInfo {
                 let img = load_from_memory(cover.data())?;
                 let resized = img.resize_exact(64, 64, FilterType::Lanczos3).to_rgb8();
                 let mut cover_64 = Vec::new();
-                JpegEncoder::new_with_quality(&mut cover_64, 100).encode(
+                JpegEncoder::new_with_quality(&mut cover_64, 85).encode(
                     &resized,
                     64,
                     64,
