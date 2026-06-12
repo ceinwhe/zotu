@@ -2,7 +2,7 @@ use gpui::{Global,SharedString};
 use serde::{Deserialize, Serialize};
 use std::{fs, io, path::Path};
 
-use crate::{db::metadata::AlbumInfo,play::player::LoopMode};
+use crate::{db::metadata::AlbumInfo, audio::playlist::LoopMode};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {

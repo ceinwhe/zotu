@@ -1,4 +1,4 @@
-use std::os::raw::{c_char, c_int, c_uint, c_ulonglong, c_void};
+use std::os::raw::{c_char, c_int, c_longlong, c_uint, c_ulonglong, c_void};
 
 #[repr(C)]
 pub struct AVCodecContext {
@@ -12,6 +12,11 @@ pub struct AVFrame {
 
 #[repr(C)]
 pub struct AVPacket {
+    _private: [u8; 0],
+}
+
+#[repr(C)]
+pub struct AVCodecParameters {
     _private: [u8; 0],
 }
 
@@ -79,7 +84,7 @@ unsafe extern "C" {
 
     pub fn avcodec_parameters_to_context(
         codec: *mut AVCodecContext,
-        par: *const c_void,
+        par: *const AVCodecParameters,
     ) -> c_int;
 
     pub fn avcodec_open2(
@@ -117,6 +122,8 @@ unsafe extern "C" {
     pub fn av_packet_alloc() -> *mut AVPacket;
 
     pub fn av_packet_free(pkt: *mut *mut AVPacket);
+
+    pub fn av_packet_unref(pkt: *mut AVPacket);
 
     pub fn av_read_frame(s: *mut AVFormatContext, pkt: *mut AVPacket) -> c_int;
 
@@ -174,6 +181,24 @@ unsafe extern "C" {
         timestamp: c_ulonglong,
         flags: c_int,
     ) -> c_int;
+
+    pub fn av_find_best_stream(
+        ic: *mut AVFormatContext,
+        type_: c_int,
+        wanted_stream_nb: c_int,
+        related_stream: c_int,
+        decoder_ret: *mut *const AVCodec,
+        flags: c_int,
+    ) -> c_int;
+
+    pub fn mimocode_avformat_nb_streams(ctx: *mut AVFormatContext) -> c_int;
+    pub fn mimocode_avformat_streams(ctx: *mut AVFormatContext) -> *mut *mut AVStream;
+    pub fn mimocode_avformat_duration(ctx: *mut AVFormatContext) -> c_longlong;
+    pub fn mimocode_avstream_codecpar(stream: *mut AVStream) -> *mut AVCodecParameters;
+    pub fn mimocode_avcodec_sample_rate(ctx: *mut AVCodecContext) -> c_int;
+    pub fn mimocode_avcodec_sample_fmt(ctx: *mut AVCodecContext) -> c_int;
+    pub fn mimocode_avcodec_channels(ctx: *mut AVCodecContext) -> c_int;
+    pub fn mimocode_avpacket_stream_index(pkt: *mut AVPacket) -> c_int;
 }
 
 pub fn ffmpeg_error(code: c_int) -> anyhow::Error {

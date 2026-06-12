@@ -22,5 +22,12 @@ fn main() {
         println!("cargo:rustc-link-lib=swresample");
         println!("cargo:rustc-link-lib=avfilter");
     }
+
+    // Compile C helpers for FFI struct field access
+    cc::Build::new()
+        .file("src/audio/ffmpeg/helpers.c")
+        .compile("mimocode_ffmpeg_helpers");
+
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=src/audio/ffmpeg/helpers.c");
 }

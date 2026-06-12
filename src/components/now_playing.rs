@@ -1,6 +1,7 @@
 use crate::{
     db::metadata::AlbumInfo,
-    play::player::{LoopMode, PlayState, Player},
+    audio::player::Player,
+    audio::playlist::{LoopMode, PlayState},
     theme::*,
     util::format_duration,
 };

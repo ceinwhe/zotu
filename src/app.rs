@@ -10,7 +10,7 @@ use crate::{
         titlebar::TitleBar,
     },
     db::{database::DB, dbstate::LibraryState, table::Table},
-    play::player::Player,
+    audio::player::Player,
     theme::*,
     ui::search::{ClearSearchEvent, SearchEvent},
 };
