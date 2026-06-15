@@ -1,6 +1,7 @@
 /target
 /assets/covers
 
+config.json
 todo.md
 
 *.db
