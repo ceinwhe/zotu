@@ -4,7 +4,7 @@
 /assets/covers
 
 todo.md
-
+config.toml
 stderr.log
 
 *.db
