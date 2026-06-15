@@ -1,14 +1,90 @@
 use gpui::Global;
+use rand::seq::SliceRandom;
+use rodio::{Decoder, OutputStream, Sink};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use std::sync::Arc;
+use std::{collections::HashMap, error::Error, path::PathBuf, sync::Arc, time::Instant};
 
 use crate::db::metadata::AlbumInfo;
 
-use super::engine::{AudioEngine, EngineEvent};
-use super::playlist::{LoopMode, PlayList, PlayProgress, PlayState};
+/// 循环播放模式
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
+pub enum LoopMode {
+    Random,
+    Single,
+    List,
+}
+
+impl LoopMode {
+    /// 点击切换到下一个循环模式
+    pub fn next(&self) -> Self {
+        match self {
+            LoopMode::List => LoopMode::Single,
+            LoopMode::Single => LoopMode::Random,
+            LoopMode::Random => LoopMode::List,
+        }
+    }
+}
+
+/// 播放状态
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum PlayState {
+    Play,
+    Paused,
+    Stopped,
+}
+
+/// 播放进度信息（供 UI 使用）
+#[derive(Clone, Debug)]
+pub struct PlayProgress {
+    /// 当前播放位置（秒）
+    pub elapsed: u64,
+    /// 总时长（秒）
+    pub duration: u64,
+    /// 播放进度比例 (0.0 ~ 1.0)
+    pub progress: f32,
+}
+
+struct PlayList {
+    items: Arc<Vec<AlbumInfo>>,
+    index: HashMap<Uuid, usize>,
+    /// 随机播放时的播放顺序
+    shuffle_order: Vec<usize>,
+}
+
+impl PlayList {
+    fn new(items: Arc<Vec<AlbumInfo>>) -> Self {
+        let index = items
+            .iter()
+            .enumerate()
+            .map(|(i, item)| (item.id(), i))
+            .collect();
+        let shuffle_order = (0..items.len()).collect();
+        Self {
+            items,
+            index,
+            shuffle_order,
+        }
+    }
+
+    fn shuffle(&mut self) {
+        let mut rng = rand::rng();
+        self.shuffle_order.shuffle(&mut rng);
+    }
+
+    fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    fn get(&self, index: usize) -> Option<&AlbumInfo> {
+        self.items.get(index)
+    }
+}
 
 pub struct Player {
-    engine: Box<dyn AudioEngine>,
+    stream: OutputStream,
+    sink: Sink,
     playlist: Option<PlayList>,
     current_index: Option<usize>,
     current_shuffle_index: Option<usize>,
@@ -16,19 +92,29 @@ pub struct Player {
     loop_mode: LoopMode,
     play_state: PlayState,
 
+    /// 播放历史记录（存储播放过的歌曲索引）
     play_history: Vec<usize>,
+    /// 当前在历史记录中的位置
     history_position: Option<usize>,
 
-    track_start_time: Option<std::time::Instant>,
+    /// 当前曲目开始播放的时间点（用于计算进度）
+    track_start_time: Option<Instant>,
+    /// 暂停时已播放的时长（秒）
     paused_elapsed: Option<u64>,
 }
 
 impl Global for Player {}
 
 impl Player {
-    pub fn new(engine: Box<dyn AudioEngine>) -> Self {
+    pub fn new() -> Self {
+        let stream =
+            rodio::OutputStreamBuilder::open_default_stream().expect("open default audio stream");
+
+        let sink = Sink::connect_new(&stream.mixer());
+
         Self {
-            engine,
+            stream,
+            sink,
             playlist: None,
             current_index: None,
             current_shuffle_index: None,
@@ -45,26 +131,29 @@ impl Player {
     // ========== 播放控制 ==========
 
     fn play(&mut self) {
-        self.engine.resume();
+        self.sink.play();
         self.play_state = PlayState::Play;
+        // 记录开始播放的时间点
         if self.track_start_time.is_none() {
-            self.track_start_time = Some(std::time::Instant::now());
+            self.track_start_time = Some(Instant::now());
         }
     }
 
     fn pause(&mut self) {
-        self.engine.pause();
+        self.sink.pause();
         self.play_state = PlayState::Paused;
+        // 保存暂停时已播放的时长
         self.paused_elapsed = Some(self.current_elapsed());
     }
 
     fn stop(&mut self) {
-        self.engine.stop();
+        self.sink.stop();
         self.play_state = PlayState::Stopped;
         self.track_start_time = None;
         self.paused_elapsed = None;
     }
 
+    /// 停止播放并清空播放状态
     pub fn clear(&mut self) {
         self.stop();
         self.current_track = None;
@@ -78,7 +167,7 @@ impl Player {
         if self.current_track.is_none() {
             return;
         }
-        if self.engine.is_paused() {
+        if self.sink.is_paused() {
             self.play();
         } else {
             self.pause();
@@ -87,6 +176,7 @@ impl Player {
 
     // ========== 播放进度 ==========
 
+    /// 获取当前播放进度
     pub fn progress(&self) -> Option<PlayProgress> {
         let track = self.current_track.as_ref()?;
         let duration = track.duration();
@@ -105,6 +195,7 @@ impl Player {
         })
     }
 
+    /// 计算当前已播放时长（秒）
     fn current_elapsed(&self) -> u64 {
         match self.play_state {
             PlayState::Play => {
@@ -121,12 +212,14 @@ impl Player {
         }
     }
 
+    /// Seek 到指定位置（秒）
     pub fn seek(&mut self, position_secs: u64) {
         if let Some(track) = self.current_track.clone() {
-            if self.engine.seek(position_secs).is_ok() {
-                self.paused_elapsed = Some(position_secs);
-                self.track_start_time = Some(std::time::Instant::now());
-            }
+            let path = track.path();
+            // 保存当前位置信息
+            self.paused_elapsed = Some(position_secs);
+            // 重新开始播放
+            self.play_source_internal(path, track, Some(position_secs));
         }
     }
 
@@ -152,19 +245,10 @@ impl Player {
         self.loop_mode
     }
 
+    /// 检查 sink 是否播放完毕，用于轮询自动下一首
     pub fn check_and_auto_next(&mut self) {
-        let events = self.engine.poll_events();
-        for event in events {
-            match event {
-                EngineEvent::TrackFinished => {
-                    if self.play_state == PlayState::Play {
-                        self.auto_next();
-                    }
-                }
-                EngineEvent::Error(e) => {
-                    eprintln!("[ERROR] Engine error: {}", e);
-                }
-            }
+        if self.sink.empty() && self.play_state == PlayState::Play {
+            self.auto_next();
         }
     }
 
@@ -210,6 +294,7 @@ impl Player {
 
     // ========== 播放操作 ==========
 
+    /// 点击歌曲列表中的歌曲播放
     pub fn play_track(&mut self, item: &AlbumInfo) {
         if let Some(playlist) = &self.playlist {
             if let Some(&idx) = playlist.index.get(&item.id()) {
@@ -222,7 +307,7 @@ impl Player {
             }
         }
 
-        self.play_source(item);
+        self.play_source(item, None);
     }
 
     fn add_to_history(&mut self, idx: usize) {
@@ -243,6 +328,7 @@ impl Player {
         }
     }
 
+    /// 播放下一首
     pub fn next(&mut self) {
         if let Some(pos) = self.history_position {
             if pos < self.play_history.len().saturating_sub(1) {
@@ -287,6 +373,7 @@ impl Player {
         }
     }
 
+    /// 播放上一首
     pub fn previous(&mut self) {
         if let Some(pos) = self.history_position {
             if pos > 0 {
@@ -344,19 +431,19 @@ impl Player {
                         playlist.shuffle_order.iter().position(|&i| i == idx);
                 }
 
-                let item_clone = item.clone();
-                drop(playlist);
-                self.play_source(&item_clone);
+                let path = item.path();
+                self.play_source_internal(path, item.clone(), None);
             }
         }
     }
 
+    /// 自动播放下一首（由后台线程调用）
     fn auto_next(&mut self) {
         match self.loop_mode {
             LoopMode::Single => {
                 if let Some(track) = &self.current_track {
-                    let track_clone = track.clone();
-                    self.play_source(&track_clone);
+                    let path = track.path();
+                    self.play_source_internal(path, track.clone(), None);
                 }
             }
             _ => {
@@ -398,20 +485,55 @@ impl Player {
         }
     }
 
-    fn play_source(&mut self, item: &AlbumInfo) {
+    fn play_source(&mut self, item: &AlbumInfo, seek_to: Option<u64>) {
         let path = item.path();
-        match self.engine.play(&path) {
-            Ok(()) => {
-                self.current_track = Some(item.clone());
-                self.paused_elapsed = None;
-                self.track_start_time = Some(std::time::Instant::now());
+        self.play_source_internal(path, item.clone(), seek_to);
+    }
+
+    fn play_source_internal(
+        &mut self,
+        path: Arc<PathBuf>,
+        track_info: AlbumInfo,
+        seek_to: Option<u64>,
+    ) {
+        // 停止当前播放
+        self.sink.stop();
+
+        // 重新创建 sink
+        self.sink = Sink::connect_new(&self.stream.mixer());
+
+        match decode(path.clone()) {
+            Ok(source) => {
+                self.sink.append(source);
+                self.current_track = Some(track_info);
+
+                // 如果有 seek 位置，则跳转（注意：rodio 的 Sink 不支持 seek，这是一个近似实现）
+                if let Some(_pos) = seek_to {
+                    // rodio 0.21 的 Sink 不支持精确 seek
+                    // 作为近似，记录起始偏移
+                    self.paused_elapsed = seek_to;
+                } else {
+                    self.paused_elapsed = None;
+                }
+
+                self.track_start_time = Some(Instant::now());
                 self.play_state = PlayState::Play;
+                self.sink.play();
             }
             Err(e) => {
-                eprintln!("[ERROR] Failed to play {:?}: {}", path, e);
+                eprintln!("[ERROR] 解码音频文件失败: {:?} - {}", path, e);
                 self.current_track = None;
                 self.play_state = PlayState::Stopped;
             }
         }
     }
+}
+
+/// 解码音频文件
+fn decode(
+    path: Arc<PathBuf>,
+) -> Result<Decoder<std::io::BufReader<std::fs::File>>, Box<dyn Error + Send + Sync>> {
+    let file = std::fs::File::open(path.as_path())?;
+    let source = Decoder::new(std::io::BufReader::new(file))?;
+    Ok(source)
 }

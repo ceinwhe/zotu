@@ -1,7 +1,7 @@
 use gpui::*;
 use zotu::{
-    app::Zotu, assets::Assets, audio::ffmpeg::FfmpegEngine, audio::player::Player,
-    config::Config, db::database::DB, error::log_error,
+    app::Zotu, assets::Assets, config::Config, db::database::DB, error::log_error,
+    play::player::Player,
 };
 
 fn main() {
@@ -29,7 +29,7 @@ fn main() {
             };
             cx.set_global(config);
 
-            cx.set_global(Player::new(Box::new(FfmpegEngine::new().expect("Failed to create audio engine"))));
+            cx.set_global(Player::new());
 
             // 初始化全局数据库连接（失败时退出）
             match DB::new("metadata.db") {

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     db::{database::DB, dbstate::LibraryState, metadata::AlbumInfo, table::Table},
-    audio::player::Player,
+    play::player::Player,
     theme::*,
     ui::menu::{MenuAction, MenuContext},
     util::format_duration,
