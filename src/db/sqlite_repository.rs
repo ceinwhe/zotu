@@ -1,21 +1,67 @@
-use gpui::{Global, SharedString};
+use gpui::SharedString;
 use rusqlite::{Connection, params};
 use std::io;
 use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 use walkdir::WalkDir;
 
-use super::metadata::AlbumInfo;
-use crate::db::table;
+use super::AlbumInfo;
+use crate::application::LibraryRepository;
 
-pub struct DB {
+enum Table {
+    Favorite,
+    History,
+}
+
+impl Table {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Favorite => "favorite",
+            Self::History => "history",
+        }
+    }
+}
+
+pub struct SqliteLibraryRepository {
     conn: Connection,
 }
 
-impl Global for DB {}
+impl LibraryRepository for SqliteLibraryRepository {
+    fn load_library(&self) -> Vec<AlbumInfo> {
+        self.load_all_albums()
+    }
 
-impl DB {
-    pub fn new(db_path: &str) -> rusqlite::Result<DB> {
+    fn load_favorite_ids(&self) -> Vec<Uuid> {
+        self.get_all_uuids(Table::Favorite)
+    }
+
+    fn load_history_ids(&self) -> Vec<Uuid> {
+        self.get_all_uuids(Table::History)
+    }
+
+    fn add_favorite(&self, id: &Uuid) -> anyhow::Result<()> {
+        self.add_to_table(Table::Favorite, id)?;
+        Ok(())
+    }
+
+    fn remove_favorite(&self, id: &Uuid) -> anyhow::Result<()> {
+        self.remove_from_table(Table::Favorite, id)?;
+        Ok(())
+    }
+
+    fn add_history(&self, id: &Uuid) -> anyhow::Result<()> {
+        self.add_to_table(Table::History, id)?;
+        Ok(())
+    }
+
+    fn scan_directory(&self, path: &str) -> anyhow::Result<()> {
+        self.add_metadata_to_library(path)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))
+    }
+}
+
+impl SqliteLibraryRepository {
+    pub fn new(db_path: &str) -> rusqlite::Result<Self> {
         let conn = Connection::open(db_path)?;
         // 启用性能优化
         conn.execute_batch(
@@ -45,7 +91,7 @@ impl DB {
             );",
         )?;
 
-        Ok(DB { conn })
+        Ok(Self { conn })
     }
 
     /// 从数据库行映射到 AlbumInfo 的通用方法
@@ -97,7 +143,7 @@ impl DB {
         albums
     }
 
-    pub fn get_all_uuids(&self, table: table::Table) -> Vec<Uuid> {
+    fn get_all_uuids(&self, table: Table) -> Vec<Uuid> {
         let Ok(mut stmt) = self
             .conn
             .prepare_cached(&format!("SELECT uuid FROM {}", table.as_str()))
@@ -138,7 +184,7 @@ impl DB {
     }
 
     /// 将 UUID 添加到指定表中（如果已存在则忽略）
-    pub fn add_to_table(&self, table: table::Table, id: &Uuid) -> rusqlite::Result<()> {
+    fn add_to_table(&self, table: Table, id: &Uuid) -> rusqlite::Result<()> {
         let mut stmt = self.conn.prepare_cached(&format!(
             "INSERT OR IGNORE INTO {} (uuid) VALUES (?)",
             table.as_str()
@@ -148,7 +194,7 @@ impl DB {
     }
 
     /// 从指定表中移除 UUID
-    pub fn remove_from_table(&self, table: table::Table, id: &Uuid) -> rusqlite::Result<()> {
+    fn remove_from_table(&self, table: Table, id: &Uuid) -> rusqlite::Result<()> {
         let mut stmt = self
             .conn
             .prepare_cached(&format!("DELETE FROM {} WHERE uuid = ?", table.as_str()))?;

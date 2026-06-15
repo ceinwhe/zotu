@@ -1,4 +1,5 @@
-pub mod metadata;
-pub mod database;
-pub mod table;
-pub mod dbstate;
+mod metadata;
+mod sqlite_repository;
+
+pub use metadata::AlbumInfo;
+pub use sqlite_repository::SqliteLibraryRepository;

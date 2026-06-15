@@ -1,44 +1,56 @@
 use gpui::*;
 use rfd::AsyncFileDialog;
 
-use crate::{config::Config, db::database::DB, theme::*};
+use crate::{
+    application::{AppAction, AppController, AppEvent, LibraryAction},
+    theme::*,
+};
 
-pub struct Setting;
+pub struct Settings {
+    controller: Entity<AppController>,
+}
 
-impl Setting {
-    /// 打开文件夹选择对话框并更新音乐目录
-    fn pick_music_folder(&self, cx: &mut Context<Self>) {
-        cx.spawn(async move |_this: WeakEntity<Setting>, cx: &mut AsyncApp| {
-            let folder = AsyncFileDialog::new()
-                .set_title("选择音乐文件夹")
-                .pick_folder()
-                .await;
-
-            if let Some(folder) = folder {
-                let path = folder.path().to_string_lossy().to_string();
-                cx.update(|cx: &mut App| {
-                    // 更新配置
-                    cx.update_global::<Config, _>(|config, _cx| {
-                        config.media_file.music_directory = SharedString::new(path.clone());
-                    });
-
-                    // 扫描并添加到数据库
-                    cx.update_global::<DB, _>(|db, _cx| {
-                        if let Err(e) = db.add_metadata_to_library(&path) {
-                            eprintln!("[WARN] 扫描音乐文件夹失败: {}", e);
-                        }
-                    });
-                })
-                .ok();
+impl Settings {
+    pub fn new(controller: Entity<AppController>, cx: &mut Context<Self>) -> Self {
+        cx.subscribe(&controller, |_this, _controller, event, cx| {
+            if *event == AppEvent::SettingsChanged {
+                cx.notify();
             }
         })
+        .detach();
+        Self { controller }
+    }
+
+    fn pick_music_folder(&self, cx: &mut Context<Self>) {
+        let controller = self.controller.clone();
+        cx.spawn(
+            async move |_this: WeakEntity<Settings>, cx: &mut AsyncApp| {
+                let folder = AsyncFileDialog::new()
+                    .set_title("选择音乐文件夹")
+                    .pick_folder()
+                    .await;
+
+                if let Some(folder) = folder {
+                    let path = folder.path().to_string_lossy().to_string();
+                    let _ = controller.update(cx, |controller, cx| {
+                        controller
+                            .dispatch(AppAction::Library(LibraryAction::ScanDirectory(path)), cx);
+                    });
+                }
+            },
+        )
         .detach();
     }
 }
 
-impl Render for Setting {
+impl Render for Settings {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let music_dir = cx.global::<Config>().media_file.music_directory.to_string();
+        let music_directory = self
+            .controller
+            .read(cx)
+            .state()
+            .music_directory()
+            .to_string();
 
         div()
             .flex()
@@ -53,7 +65,6 @@ impl Render for Setting {
                     .text_color(text_primary())
                     .child("设置"),
             )
-            // 媒体文件目录设置
             .child(
                 div()
                     .mb_4()
@@ -83,7 +94,7 @@ impl Render for Setting {
                                     .text_sm()
                                     .text_color(text_secondary())
                                     .truncate()
-                                    .child(music_dir.clone()),
+                                    .child(music_directory),
                             )
                             .child(
                                 div()
@@ -98,7 +109,7 @@ impl Render for Setting {
                                     .text_sm()
                                     .font_weight(FontWeight::MEDIUM)
                                     .text_color(text_primary())
-                                    .hover(|s| s.bg(bg_active()))
+                                    .hover(|style| style.bg(bg_active()))
                                     .child("更改")
                                     .on_mouse_down(
                                         MouseButton::Left,
@@ -109,7 +120,6 @@ impl Render for Setting {
                             ),
                     ),
             )
-            // 关于信息
             .child(
                 div()
                     .mt_auto()

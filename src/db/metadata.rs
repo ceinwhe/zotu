@@ -91,13 +91,14 @@ impl AlbumInfo {
         let cover_pack: Option<(SharedString, Arc<Vec<u8>>)> = tag
             .and_then(|t| t.pictures().first())
             .map(|cover| -> Result<_, Box<dyn std::error::Error>> {
-                let ext = cover
-                    .mime_type()
-                    .cloned()
-                    .unwrap_or(MimeType::Png)
-                    .ext()
-                    .unwrap_or("png")
-                    .to_string();
+                let ext = match cover.mime_type() {
+                    Some(MimeType::Png) => "png",
+                    Some(MimeType::Jpeg) => "jpg",
+                    Some(MimeType::Gif) => "gif",
+                    Some(MimeType::Bmp) => "bmp",
+                    _ => "png",
+                }
+                .to_string();
 
                 // 生成 64x64 jpeg bytes
                 let img = load_from_memory(cover.data())?;

@@ -1,43 +1,20 @@
 use gpui::*;
 
-use crate::{
-    theme::*,
-    ui::search::{ClearSearchEvent, SearchBox, SearchEvent},
-};
+use crate::{application::AppController, theme::*};
+
+use super::SearchBox;
 
 pub struct TitleBar {
-    /// 搜索框组件
     search_box: Entity<SearchBox>,
 }
 
 impl TitleBar {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        let search_box = cx.new(|cx| SearchBox::new(cx));
-
-        // 转发搜索事件
-        cx.subscribe(
-            &search_box,
-            |_this, _search_box, event: &SearchEvent, cx| {
-                cx.emit(event.clone());
-            },
-        )
-        .detach();
-
-        // 转发清除搜索事件
-        cx.subscribe(
-            &search_box,
-            |_this, _search_box, _event: &ClearSearchEvent, cx| {
-                cx.emit(ClearSearchEvent);
-            },
-        )
-        .detach();
-
-        Self { search_box }
+    pub fn new(controller: Entity<AppController>, cx: &mut Context<Self>) -> Self {
+        Self {
+            search_box: cx.new(|cx| SearchBox::new(controller, cx)),
+        }
     }
 }
-
-impl EventEmitter<SearchEvent> for TitleBar {}
-impl EventEmitter<ClearSearchEvent> for TitleBar {}
 
 impl Render for TitleBar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -49,9 +26,7 @@ impl Render for TitleBar {
             .items_center()
             .justify_between()
             .bg(bg_app())
-            // 搜索框
             .child(self.search_box.clone())
-            // 拖拽区域
             .child(
                 div()
                     .h_full()
@@ -64,14 +39,12 @@ impl Render for TitleBar {
                         }),
                     ),
             )
-            // 控制按钮区域
             .child(
                 div()
                     .h_full()
                     .w_auto()
                     .flex()
                     .flex_row()
-                    // 最小化
                     .child(
                         svg()
                             .path("svg/minus.svg")
@@ -87,7 +60,6 @@ impl Render for TitleBar {
                                 }),
                             ),
                     )
-                    // 最大化
                     .child(
                         svg()
                             .path("svg/stack.svg")
@@ -103,7 +75,6 @@ impl Render for TitleBar {
                                 }),
                             ),
                     )
-                    // 关闭
                     .child(
                         svg()
                             .path("svg/close.svg")

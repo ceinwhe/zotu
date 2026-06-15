@@ -1,20 +1,24 @@
-pub mod decoder;
-pub mod ffi;
-pub mod resampler;
+mod decoder;
+mod ffi;
+mod resampler;
 
 use super::engine::{AudioEngine, EngineEvent};
-use super::output::CpalOutput;
+use super::output::{CpalOutput, SharedAudioBuffer};
 use decoder::FfmpegDecoder;
 use resampler::FfmpegResampler;
 
-use std::path::Path;
+use std::collections::VecDeque;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self, JoinHandle};
+
+const TARGET_BUFFER_MILLIS: usize = 200;
 
 pub struct FfmpegEngine {
     command_tx: std::sync::mpsc::Sender<Command>,
     event_rx: std::sync::mpsc::Receiver<EngineEvent>,
     state: Arc<Mutex<EngineState>>,
+    worker: Option<JoinHandle<()>>,
 }
 
 struct EngineState {
@@ -25,7 +29,7 @@ struct EngineState {
 }
 
 enum Command {
-    Play(String),
+    Play(PathBuf),
     Pause,
     Resume,
     Stop,
@@ -45,14 +49,15 @@ impl FfmpegEngine {
         }));
 
         let state_clone = Arc::clone(&state);
-        thread::spawn(move || {
-            engine_thread(cmd_rx, evt_tx, state_clone);
-        });
+        let worker = thread::Builder::new()
+            .name("zotu-ffmpeg".to_string())
+            .spawn(move || engine_thread(cmd_rx, evt_tx, state_clone))?;
 
         Ok(Self {
             command_tx: cmd_tx,
             event_rx: evt_rx,
             state,
+            worker: Some(worker),
         })
     }
 }
@@ -65,146 +70,215 @@ fn engine_thread(
     let mut decoder: Option<FfmpegDecoder> = None;
     let mut resampler: Option<FfmpegResampler> = None;
     let mut output: Option<CpalOutput> = None;
-    let audio_buffer: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
+    let audio_buffer: SharedAudioBuffer = Arc::new(Mutex::new(VecDeque::new()));
     let mut paused = false;
+    let mut decode_finished = false;
+    let mut position_base_secs = 0u64;
+    let mut written_frames = 0u64;
 
-    loop {
-        match cmd_rx.try_recv() {
-            Ok(Command::Play(path)) => {
-                match FfmpegDecoder::open(Path::new(&path)) {
-                    Ok(dec) => {
-                        let out_rate = 44100;
-                        let out_channels = 2;
+    'engine: loop {
+        while let Ok(command) = cmd_rx.try_recv() {
+            match command {
+                Command::Play(path) => {
+                    decoder = None;
+                    resampler = None;
+                    output = None;
+                    clear_audio_buffer(&audio_buffer);
+                    decode_finished = false;
+                    position_base_secs = 0;
+                    written_frames = 0;
 
-                        let res = FfmpegResampler::new(
-                            dec.format.sample_rate,
-                            dec.format.channels,
-                            dec.format.sample_fmt,
-                            out_rate,
-                            out_channels,
-                        );
+                    match create_playback(&path, Arc::clone(&audio_buffer)) {
+                        Ok((dec, res, out)) => {
+                            let duration = dec.duration_secs();
+                            decoder = Some(dec);
+                            resampler = Some(res);
+                            output = Some(out);
+                            paused = false;
 
-                        match res {
-                            Ok(r) => {
-                                let mut out =
-                                    CpalOutput::new(out_rate as u32, out_channels as u16).ok();
-                                if let Some(ref mut o) = out {
-                                    let _ = o.start(Arc::clone(&audio_buffer));
-                                }
-
-                                {
-                                    let mut s = state.lock().unwrap();
-                                    s.is_playing = true;
-                                    s.is_paused = false;
-                                    s.duration_secs = Some(dec.duration_secs());
-                                    s.current_position_secs = 0;
-                                }
-
-                                decoder = Some(dec);
-                                resampler = Some(r);
-                                output = out;
-                                paused = false;
-                            }
-                            Err(e) => {
-                                let _ = evt_tx.send(EngineEvent::Error(e.to_string()));
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        let _ = evt_tx.send(EngineEvent::Error(e.to_string()));
-                    }
-                }
-            }
-            Ok(Command::Pause) => {
-                paused = true;
-                let mut s = state.lock().unwrap();
-                s.is_paused = true;
-                s.is_playing = false;
-            }
-            Ok(Command::Resume) => {
-                paused = false;
-                let mut s = state.lock().unwrap();
-                s.is_paused = false;
-                s.is_playing = true;
-            }
-            Ok(Command::Stop) => {
-                decoder = None;
-                resampler = None;
-                output = None;
-                let mut s = state.lock().unwrap();
-                s.is_playing = false;
-                s.is_paused = false;
-                s.current_position_secs = 0;
-            }
-            Ok(Command::Seek(pos)) => {
-                if let Some(ref mut dec) = decoder {
-                    let _ = dec.seek(pos);
-                    let mut s = state.lock().unwrap();
-                    s.current_position_secs = pos;
-                }
-            }
-            Ok(Command::Shutdown) => {
-                break;
-            }
-            Err(std::sync::mpsc::TryRecvError::Empty) => {}
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
-        }
-
-        if !paused {
-            if let (Some(ref mut dec), Some(ref mut res)) = (&mut decoder, &mut resampler) {
-                if !dec.is_finished() {
-                    match dec.read_frame() {
-                        Ok(Some((data, nb_samples))) => {
-                            let out_samples = nb_samples * 2;
-                            let mut out_buf = vec![0f32; out_samples * 2];
-                            let out_ptr = out_buf.as_mut_ptr() as *mut u8;
-                            let in_ptr = data as *const u8;
-
-                            match res.resample(
-                                &in_ptr,
-                                nb_samples as i32,
-                                &mut (out_ptr as *mut u8),
-                                out_samples as i32,
-                            ) {
-                                Ok(written) => {
-                                    let samples = written as usize * 2;
-                                    let mut buf = audio_buffer.lock().unwrap();
-                                    buf.extend_from_slice(&out_buf[..samples]);
-
-                                    let sample_rate = res.out_sample_rate() as u64;
-                                    if sample_rate > 0 {
-                                        let mut s = state.lock().unwrap();
-                                        s.current_position_secs += written as u64 / sample_rate;
-                                    }
-                                }
-                                Err(e) => {
-                                    let _ = evt_tx.send(EngineEvent::Error(e.to_string()));
-                                }
-                            }
-                        }
-                        Ok(None) => {
-                            let _ = evt_tx.send(EngineEvent::TrackFinished);
-                            decoder = None;
-                            resampler = None;
                             let mut s = state.lock().unwrap();
-                            s.is_playing = false;
+                            s.is_playing = true;
+                            s.is_paused = false;
+                            s.duration_secs = Some(duration);
+                            s.current_position_secs = 0;
                         }
-                        Err(e) => {
-                            let _ = evt_tx.send(EngineEvent::Error(e.to_string()));
+                        Err(error) => {
+                            set_stopped(&state, true);
+                            let _ = evt_tx.send(EngineEvent::Error(error.to_string()));
                         }
                     }
                 }
+                Command::Pause => {
+                    paused = true;
+                    if let Some(out) = &output
+                        && let Err(error) = out.pause()
+                    {
+                        let _ = evt_tx.send(EngineEvent::Error(error.to_string()));
+                    }
+                    let mut s = state.lock().unwrap();
+                    s.is_paused = true;
+                    s.is_playing = false;
+                }
+                Command::Resume => {
+                    if decoder.is_some() || decode_finished {
+                        paused = false;
+                        if let Some(out) = &output
+                            && let Err(error) = out.resume()
+                        {
+                            let _ = evt_tx.send(EngineEvent::Error(error.to_string()));
+                        }
+                        let mut s = state.lock().unwrap();
+                        s.is_paused = false;
+                        s.is_playing = true;
+                    }
+                }
+                Command::Stop => {
+                    decoder = None;
+                    resampler = None;
+                    output = None;
+                    clear_audio_buffer(&audio_buffer);
+                    paused = false;
+                    decode_finished = false;
+                    position_base_secs = 0;
+                    written_frames = 0;
+                    set_stopped(&state, false);
+                }
+                Command::Seek(position_secs) => {
+                    if let (Some(dec), Some(out)) = (&mut decoder, &output) {
+                        let seek_result = dec.seek(position_secs).and_then(|()| {
+                            FfmpegResampler::new(
+                                dec.format(),
+                                out.sample_rate() as i32,
+                                out.channels() as i32,
+                            )
+                        });
+
+                        match seek_result {
+                            Ok(new_resampler) => {
+                                clear_audio_buffer(&audio_buffer);
+                                resampler = Some(new_resampler);
+                                decode_finished = false;
+                                position_base_secs = position_secs;
+                                written_frames = 0;
+                                state.lock().unwrap().current_position_secs = position_secs;
+                            }
+                            Err(error) => {
+                                let _ = evt_tx.send(EngineEvent::Error(error.to_string()));
+                            }
+                        }
+                    }
+                }
+                Command::Shutdown => break 'engine,
             }
         }
 
-        thread::sleep(std::time::Duration::from_millis(10));
+        if paused {
+            thread::sleep(std::time::Duration::from_millis(5));
+            continue;
+        }
+
+        if decode_finished {
+            if audio_buffer.lock().unwrap().is_empty() {
+                decode_finished = false;
+                output = None;
+                set_stopped(&state, false);
+                let _ = evt_tx.send(EngineEvent::TrackFinished);
+            } else {
+                thread::sleep(std::time::Duration::from_millis(2));
+            }
+            continue;
+        }
+
+        let Some(out) = &output else {
+            thread::sleep(std::time::Duration::from_millis(10));
+            continue;
+        };
+
+        let target_buffer_samples =
+            out.sample_rate() as usize * out.channels() as usize * TARGET_BUFFER_MILLIS / 1000;
+        if audio_buffer.lock().unwrap().len() >= target_buffer_samples {
+            thread::sleep(std::time::Duration::from_millis(2));
+            continue;
+        }
+
+        let mut reached_eof = false;
+        let mut decode_error = None;
+        if let (Some(dec), Some(res)) = (&mut decoder, &mut resampler) {
+            match dec.read_frame() {
+                Ok(Some(frame)) => {
+                    let result = (|| -> anyhow::Result<()> {
+                        let converted = res.convert(&frame)?;
+                        audio_buffer.lock().unwrap().extend(converted.samples);
+
+                        written_frames += converted.frame_count as u64;
+                        let sample_rate = res.output_sample_rate() as u64;
+                        if let Some(elapsed_secs) = written_frames.checked_div(sample_rate) {
+                            state.lock().unwrap().current_position_secs =
+                                position_base_secs + elapsed_secs;
+                        }
+                        Ok(())
+                    })();
+
+                    if let Err(error) = result {
+                        decode_error = Some(error.to_string());
+                    }
+                }
+                Ok(None) => reached_eof = true,
+                Err(error) => decode_error = Some(error.to_string()),
+            }
+        }
+
+        if reached_eof {
+            decoder = None;
+            resampler = None;
+            decode_finished = true;
+        }
+
+        if let Some(error) = decode_error {
+            decoder = None;
+            resampler = None;
+            output = None;
+            clear_audio_buffer(&audio_buffer);
+            set_stopped(&state, false);
+            let _ = evt_tx.send(EngineEvent::Error(error));
+        }
+    }
+}
+
+fn create_playback(
+    path: &Path,
+    audio_buffer: SharedAudioBuffer,
+) -> anyhow::Result<(FfmpegDecoder, FfmpegResampler, CpalOutput)> {
+    let decoder = FfmpegDecoder::open(path)?;
+    let preferred_rate = decoder.format().sample_rate().max(1) as u32;
+    let mut output = CpalOutput::new(preferred_rate, 2)?;
+    let resampler = FfmpegResampler::new(
+        decoder.format(),
+        output.sample_rate() as i32,
+        output.channels() as i32,
+    )?;
+    output.start(audio_buffer)?;
+    Ok((decoder, resampler, output))
+}
+
+fn clear_audio_buffer(audio_buffer: &SharedAudioBuffer) {
+    audio_buffer.lock().unwrap().clear();
+}
+
+fn set_stopped(state: &Arc<Mutex<EngineState>>, clear_duration: bool) {
+    let mut state = state.lock().unwrap();
+    state.is_playing = false;
+    state.is_paused = false;
+    state.current_position_secs = 0;
+    if clear_duration {
+        state.duration_secs = None;
     }
 }
 
 impl AudioEngine for FfmpegEngine {
     fn play(&mut self, path: &Path) -> anyhow::Result<()> {
         self.command_tx
-            .send(Command::Play(path.to_string_lossy().to_string()))
+            .send(Command::Play(path.to_path_buf()))
             .map_err(|_| anyhow::anyhow!("Engine thread disconnected"))?;
         Ok(())
     }
@@ -247,5 +321,8 @@ impl AudioEngine for FfmpegEngine {
 impl Drop for FfmpegEngine {
     fn drop(&mut self) {
         let _ = self.command_tx.send(Command::Shutdown);
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
     }
 }

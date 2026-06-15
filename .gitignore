@@ -1,8 +1,12 @@
 /target
+/.mimocode
+/docs
 /assets/covers
 
 todo.md
 
-.db
-.db-shm
-.db-wal
+stderr.log
+
+*.db
+*.db-shm
+*.db-wal

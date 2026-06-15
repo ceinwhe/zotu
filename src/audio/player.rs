@@ -1,8 +1,6 @@
-use gpui::Global;
-
 use std::sync::Arc;
 
-use crate::db::metadata::AlbumInfo;
+use crate::db::AlbumInfo;
 
 use super::engine::{AudioEngine, EngineEvent};
 use super::playlist::{LoopMode, PlayList, PlayProgress, PlayState};
@@ -22,8 +20,6 @@ pub struct Player {
     track_start_time: Option<std::time::Instant>,
     paused_elapsed: Option<u64>,
 }
-
-impl Global for Player {}
 
 impl Player {
     pub fn new(engine: Box<dyn AudioEngine>) -> Self {
@@ -47,15 +43,15 @@ impl Player {
     fn play(&mut self) {
         self.engine.resume();
         self.play_state = PlayState::Play;
-        if self.track_start_time.is_none() {
-            self.track_start_time = Some(std::time::Instant::now());
-        }
+        self.track_start_time = Some(std::time::Instant::now());
     }
 
     fn pause(&mut self) {
+        let elapsed = self.current_elapsed();
         self.engine.pause();
         self.play_state = PlayState::Paused;
-        self.paused_elapsed = Some(self.current_elapsed());
+        self.paused_elapsed = Some(elapsed);
+        self.track_start_time = None;
     }
 
     fn stop(&mut self) {
@@ -78,10 +74,14 @@ impl Player {
         if self.current_track.is_none() {
             return;
         }
-        if self.engine.is_paused() {
-            self.play();
-        } else {
-            self.pause();
+        match self.play_state {
+            PlayState::Play => self.pause(),
+            PlayState::Paused => self.play(),
+            PlayState::Stopped => {
+                if let Some(track) = self.current_track.clone() {
+                    self.play_source(&track);
+                }
+            }
         }
     }
 
@@ -122,7 +122,7 @@ impl Player {
     }
 
     pub fn seek(&mut self, position_secs: u64) {
-        if let Some(track) = self.current_track.clone() {
+        if let Some(_track) = self.current_track.clone() {
             if self.engine.seek(position_secs).is_ok() {
                 self.paused_elapsed = Some(position_secs);
                 self.track_start_time = Some(std::time::Instant::now());
@@ -175,6 +175,19 @@ impl Player {
         if self.loop_mode == LoopMode::Random {
             playlist.shuffle();
         }
+
+        self.current_index = self
+            .current_track
+            .as_ref()
+            .and_then(|track| playlist.index_of(&track.id()));
+        self.current_shuffle_index = self.current_index.and_then(|current_idx| {
+            playlist
+                .shuffle_order
+                .iter()
+                .position(|&idx| idx == current_idx)
+        });
+        self.play_history.clear();
+        self.history_position = None;
         self.playlist = Some(playlist);
     }
 
@@ -345,7 +358,6 @@ impl Player {
                 }
 
                 let item_clone = item.clone();
-                drop(playlist);
                 self.play_source(&item_clone);
             }
         }

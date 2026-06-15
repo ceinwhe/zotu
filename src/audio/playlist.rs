@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use std::{collections::HashMap, sync::Arc};
 
-use crate::db::metadata::AlbumInfo;
+use crate::db::AlbumInfo;
 
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Debug)]
 pub enum LoopMode {
